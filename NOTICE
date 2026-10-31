@@ -1,0 +1,86 @@
+Glimlink — source ownership and licensing scope
+
+Project-authored original code, tools, documentation and original synthetic
+fixtures are offered under the root MIT License. This grant covers only
+copyright held by the Agent Runtime contributors. It does not relicense
+third-party source, adaptations, translated kernels, copied data or license
+documents. Existing third-party notices remain effective. A Rust rewrite or
+C2Rust translation does not by itself make upstream work original.
+
+The file/module inventory and pending origin reviews are recorded in
+docs/source-licenses.json and docs/OPEN_SOURCE.md. In particular:
+
+* QQ protocol adaptation: crates/platform-qq/NOTICE records LagrangeGo commit
+  f7f8abfaa7f1 (AGPL-3.0), gofastTEA v0.1.3 (GPL-3.0), and specific referenced
+  modules. Their full license texts remain in platform-qq/LICENSE and
+  LICENSE-TEA-GPL-3.0. Copied/translated portions are excluded from the root
+  MIT grant. New glue must be separated by actual origin, not by assuming the
+  entire crate is original or treating an earlier locally chosen SPDX label
+  as evidence of third-party authorship.
+
+* QQ native signing shim: signer.rs additionally references nimeng1299/SignServer
+  commit c0b515853d6f8de5b28c757d4cdccb8e145f8dc9 (AGPL-3.0-only), through the
+  original native probe and Rust experiment. Original loader/bounds do not
+  relicense adapted registration/shim code. The external wrapper.core.node
+  algorithm remains proprietary/unbundled.
+
+* NihAV: crates/runtime-media/vendor/nihav-* is upstream source, fixed at
+  aa33eccc6e9bebd9bd27b7c8a7a18b04dffd0dbd, with its AGPL license in
+  vendor/NIHAV-COPYING and source provenance in vendor/PROVENANCE.md.
+
+* Skype SILK SDK 1.0.9.6: vendor/runtime-silk/src/kernel.rs is a decoder-only
+  C2Rust translation of the source pinned in runtime-silk/PROVENANCE.md.
+  Copyright (c) 2006–2012 Skype Limited; BSD-3-Clause terms remain in that
+  directory's LICENSE. Original bounded wrappers, development tools and
+  deterministic synthetic vectors are separate project-authored MIT portions.
+
+* AMR: vendor/rvoip-amr contains the MIT-licensed rvoip-codec-core 0.4.0
+  implementation. Copyright (c) 2025 Jonathan Eisenzopf; its LICENSE and
+  UPSTREAM.md are retained. The kernel/tables remain third-party. Upstream
+  reference vectors with unresolved provenance are excluded from the public
+  source candidate manifest pending replacement or documented permission.
+
+* OpenAI model metadata: runtime-engine/data/codex-0.165.0-direct.json is
+  derived from OpenAI Codex rust-v0.165.0 under Apache-2.0. Its upstream
+  license and local change notice remain in data/LICENSE-OpenAI and
+  data/NOTICE-OpenAI. Those data are not claimed as original MIT code.
+
+Platform implementations also cite public API/protocol references. A protocol
+field description is distinct from copied implementation code; reproduced
+snippets and fixed third-party data require per-file review. The inventory
+does not infer a third-party license solely from a crate's earlier self-set
+license field, nor grant MIT rights over uncertain material.
+
+Current builds can statically combine original MIT source with AGPL/GPL
+components. The MIT grant on original files does not make such a combined
+executable MIT-only or remove other applicable source/notice obligations.
+Optional drivers or workers must retain their own licenses. A process
+boundary is an engineering design, not an automatic licensing exemption.
+
+Native Codex/Antigravity executables, proprietary/native QQ signing modules,
+downloaded model weights, account/session material and private observations
+are not included in the source-release candidate list. Their installation
+and redistribution terms are separate; no redistribution rights over them
+are granted by this repository.
+
+Optional operator login window: crates/runtime-login-window contains original
+MIT Rust lifecycle/policy code and thin public system-API declarations. Its
+explicit native-webview build dynamically uses separately installed GTK3 and
+WebKitGTK4.1; those libraries and JavaScriptCore retain their upstream licenses.
+They are not bundled, vendored or linked into the headless Runtime or default
+agentctl. The development GUI image is not a VPS deployment image.
+
+Optional local provider graphics under operator-desktop/frontend/brands/ are
+excluded from public source. They remain third-party copyright/trademark assets,
+not project MIT artwork. Exact official
+sources, owners, unchanged-file hashes and usage references are recorded in
+that directory's sources.json and README.md. The Codex icon comes from OpenAI's
+official extension listing. Original frontend code and the separate project
+application glyph remain MIT. Public redistribution rights for each brand asset require separate
+review; a source-path audit is not a grant of those rights.
+
+The optional X web-session adapter retains independent upstream MIT notices
+for d60/Twikit and iSarabjitDhiman/XClientTransaction, with pinned revisions and
+per-component attribution in crates/platform-x/NOTICE. Rust translations of the
+transaction algorithms remain attributed to their upstream author. Public X
+JavaScript is parsed as bounded runtime input, not redistributed or executed.

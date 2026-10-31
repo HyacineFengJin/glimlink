@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: MIT
+FROM rust:1.90-bookworm@sha256:3914072ca0c3b8aad871db9169a651ccfce30cf58303e5d6f2db16d1d8a7e58f
+RUN apt-get update && apt-get install -y --no-install-recommends clang-15 llvm-15-dev libclang-15-dev libclang-cpp15-dev cmake libssl-dev pkg-config ca-certificates && rm -rf /var/lib/apt/lists/*
+ENV LLVM_CONFIG_PATH=/usr/bin/llvm-config-15
+ENV CARGO_BUILD_JOBS=4
+RUN cargo install --locked --version 0.22.1 c2rust -j 4 && rm -rf /usr/local/cargo/registry /tmp/*
+WORKDIR /lab

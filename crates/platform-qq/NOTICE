@@ -1,0 +1,58 @@
+platform-qq — Agent Runtime QQ protocol library
+
+This crate adapts the Rust protocol experiment in
+experiments/qq-lab/rust-client into a synchronous library. The experiment,
+private session files and experimental outbox remain separate and unchanged.
+Project-authored original glue is MIT where marked. Adapted protocol and
+framing code retains the upstream licenses listed below.
+
+Protocol layouts and authentication flow were translated with reference to:
+  LagrangeDev/LagrangeGo, commit f7f8abfaa7f1
+  https://github.com/LagrangeDev/LagrangeGo/tree/f7f8abfaa7f1
+  AGPL-3.0; full license preserved in LICENSE.
+  client/internal/network/{transport,response}.go;
+  client/packets/wtlogin/{exchange,statusService}.go;
+  client/{ntlogin,message}.go;
+  client/packets/pb/message/{message,routing}.pb.go.
+  Rich chat, contacts, history and media additionally reference
+  message/{build,message,elements}.go; client/{operation,richmedia,highway}.go;
+  client/internal/highway/{bdh,highway,frame}.go;
+  client/packets/oidb/{fetch_friends,fetch_groups,fetch_members,fetch_group,
+  private_image_upload,group_image_upload,private_record_upload,
+  group_record_upload,private_video_upload,group_video_upload,
+  private_file_upload,group_file_upload,private_file_download,
+  group_fs_download,group_send_file}.go; client/packets/highway/highway_url.go;
+  client/packets/pb/{message,service/oidb,service/highway}/*.proto;
+  utils/crypto/hash.go (native video Highway SHA-1 state snapshots).
+  Explicit QR login additionally references client/{client,oicq}.go,
+  client/internal/oicq/{oicq,ecdh}.go and client/packets/tlv/{common,qrcode}.go.
+  The HTTPS key rotation endpoint and protocol constants are preserved from the
+  pinned experiment. QR fixtures use synthetic P-256 keys and independent Go
+  TLV vectors, never a real account or a network service.
+
+QQ TEA framing and independent fixed test vectors reference:
+  fumiama/gofastTEA v0.1.3
+  https://github.com/fumiama/gofastTEA/tree/v0.1.3
+  GPL-3.0; full license preserved in LICENSE-TEA-GPL-3.0.
+  Upstream tea.go identifies Mrs4s/MiraiGo/binary/tea.go as its source.
+
+Protobuf compatibility was checked in the original experiment against
+RomiChan/protobuf commit 2ed269a2e54d. No Go protobuf source or runtime is
+bundled; this crate uses its own bounded Rust wire reader/writer.
+
+The optional native signing binary is not included. The explicitly configured
+module is an external QQ implementation, not Rust source or a reimplementation
+of the signing algorithm. This crate provides a pinned hash/offset loader.
+Its availability and distribution terms are separate from this source license.
+
+Native signing ABI/registration shim and offset integration additionally reference:
+  nimeng1299/SignServer commit c0b515853d6f8de5b28c757d4cdccb8e145f8dc9
+  https://github.com/nimeng1299/SignServer/tree/c0b515853d6f8de5b28c757d4cdccb8e145f8dc9
+  AGPL-3.0-only. Original Rust loader checks are distinct from adapted shim
+  expression. This notice does not grant rights to redistribute the external
+  wrapper.core.node module.
+
+Project-authored wire/session/AppInfo/key-rotation and management wrappers are
+separately marked MIT after source review. Auth, framing, TEA and mixed media/
+protocol/signing files retain their existing notices. A combined crate or binary
+is not made MIT-only by the MIT grant on these original files.

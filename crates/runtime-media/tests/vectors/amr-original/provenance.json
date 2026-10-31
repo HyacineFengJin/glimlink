@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "license": "MIT for project-authored synthetic inputs, harness and generated fixtures; oracle libraries retain Apache-2.0",
+  "content": "One second each of deterministic integer square/ramp/xorshift noise; no speech, account data or third-party reference corpus.",
+  "generator": "../../oracle/amr_reference.c",
+  "generator_sha256": "33be084ac3af770e797f8ca04e9428cccba2fe40b9f1544f58b03a728518c046",
+  "format": "S16LE PCM, mono 8000/16000 Hz; 50 frames of 20 ms, NB MR122 and WB mode4; DTX disabled",
+  "oracle_packages": [
+    {
+      "name": "libopencore-amrnb-dev_0.1.6-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/o/opencore-amr/libopencore-amrnb-dev_0.1.6-1_amd64.deb",
+      "sha256": "e989bfe400b5b402e1c7af1cc05d3a5d662622f48ca18bac5ddcf6fc438a31af",
+      "bytes": 111872
+    },
+    {
+      "name": "libopencore-amrwb-dev_0.1.6-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/o/opencore-amr/libopencore-amrwb-dev_0.1.6-1_amd64.deb",
+      "sha256": "75fada3a9c05d7acc3da95d48f4902155216e3f9aa298f2079824b4f7d8f5aff",
+      "bytes": 58204
+    },
+    {
+      "name": "libvo-amrwbenc-dev_0.1.3-2_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/v/vo-amrwbenc/libvo-amrwbenc-dev_0.1.3-2_amd64.deb",
+      "sha256": "8f3f332396a48a749fe54bb42b71b96f10c84bdc119fd0fba070e2b6b0a78f8a",
+      "bytes": 67056
+    }
+  ],
+  "files": [
+    {
+      "path": "nb-input.pcm",
+      "bytes": 16000,
+      "sha256": "37f23b2893cf2c44f5ec7447dff59617a0c8af63759792b8dec909ec6fd896ea"
+    },
+    {
+      "path": "nb-mr122.amr",
+      "bytes": 1606,
+      "sha256": "168b47729ccec9bf5bc30efd1bbf70fb8c67f5435ade487c533c75ea9c27bf87"
+    },
+    {
+      "path": "nb-mr122.pcm",
+      "bytes": 16000,
+      "sha256": "bcc1366480835a9571ddfee0343d4c9ea2170112ed4af02d07edb47f33bfc285"
+    },
+    {
+      "path": "wb-input.pcm",
+      "bytes": 32000,
+      "sha256": "3c3a24b659c7be72565ecaad35bdb8fbf7c2b660cc8eb0136064c719cb7667c1"
+    },
+    {
+      "path": "wb-mode4.amr",
+      "bytes": 2059,
+      "sha256": "20b403674dfacb05a3e76fefda1afdd997e15c429603ab2cf6efc24391f08ca8"
+    },
+    {
+      "path": "wb-mode4.pcm",
+      "bytes": 32000,
+      "sha256": "4c6184ab1a680fb89092ca383fe40d44daf5e60aed486aaa0d590d35ce49f96e"
+    }
+  ]
+}

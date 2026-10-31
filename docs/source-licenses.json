@@ -1,0 +1,708 @@
+{
+  "schema": 1,
+  "date": "2026-10-31",
+  "original_code_policy": "MIT",
+  "root_license": "LICENSE",
+  "notice": "NOTICE",
+  "method": "Origins follow NOTICE/PROVENANCE/upstream and actual derivation; self-selected Cargo SPDX is not third-party evidence.",
+  "source_release": {
+    "root_files": [
+      ".gitignore",
+      ".dockerignore",
+      "Cargo.toml",
+      "Cargo.lock",
+      "build.rs",
+      "README.md",
+      "README.zh-CN.md",
+      "DESIGN.md",
+      "LICENSE",
+      "NOTICE"
+    ],
+    "directories": [
+      "src",
+      "crates",
+      "tests",
+      "scripts",
+      "docs",
+      "operator-desktop"
+    ],
+    "excluded_roots": [
+      ".runtime",
+      "experiments",
+      "target",
+      "research",
+      "VALIDATION.md",
+      "examples"
+    ],
+    "excluded_upstream_vector_paths": [
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_dtx_input.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_dtx_mode0.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_dtx_mode0.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_dtx_mode1.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_dtx_mode1.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_dtx_mode2.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_dtx_mode2.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_dtx_mode3.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_dtx_mode3.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_dtx_mode4.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_dtx_mode4.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_dtx_mode5.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_dtx_mode5.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_dtx_mode6.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_dtx_mode6.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_dtx_mode7.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_dtx_mode7.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_dtx_mute.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_dtx_mute.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_enc_input.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_enc_mode0.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_enc_mode1.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_enc_mode2.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_enc_mode3.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_enc_mode4.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_enc_mode5.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_enc_mode6.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_enc_mode7.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_erased.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_erased.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_lost.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_lost.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_mode0.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_mode0.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_mode1.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_mode1.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_mode2.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_mode2.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_mode3.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_mode3.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_mode4.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_mode4.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_mode5.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_mode5.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_mode6.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_mode6.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_mode7.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_mode7.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrnb_vad2_trace.txt",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_dtx_input.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_dtx_mode0.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_dtx_mode0.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_dtx_mode1.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_dtx_mode1.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_dtx_mode2.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_dtx_mode2.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_dtx_mode3.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_dtx_mode3.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_dtx_mode4.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_dtx_mode4.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_dtx_mode5.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_dtx_mode5.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_dtx_mode6.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_dtx_mode6.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_dtx_mode7.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_dtx_mode7.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_dtx_mode8.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_dtx_mode8.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_dtx_mute.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_dtx_mute.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_enc_input.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_enc_mode0.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_enc_mode1.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_enc_mode2.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_enc_mode3.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_enc_mode4.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_enc_mode5.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_enc_mode6.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_enc_mode7.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_enc_mode8.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_erased.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_erased.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_lost.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_lost.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_mode0.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_mode0.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_mode1.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_mode1.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_mode2.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_mode2.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_mode3.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_mode3.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_mode4.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_mode4.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_mode5.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_mode5.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_mode6.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_mode6.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_mode7.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_mode7.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_mode8.amr",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/amrwb_mode8.pcm",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/freeswitch_amrwb_be.rtp",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/lp_stages_wb.txt",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/nb_enc_trace.txt",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/nb_stages.txt",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/nb_vad1_vectors.txt",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/stages_nb.txt",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/wb_dtx_dec_vectors.txt",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/wb_dtx_enc_vectors.txt",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/wb_enc_trace.txt",
+      "crates/runtime-media/vendor/rvoip-amr/src/codecs/amr/testdata/wb_isf_noise_vectors.txt"
+    ],
+    "reason": "Public source excludes private runtime data, local live-account acceptance harnesses, unreviewed upstream vectors and optional provider artwork.",
+    "excluded_history_patterns": [
+      "**/VALIDATION.md"
+    ],
+    "approved_binary_assets": [
+      {
+        "path": "operator-desktop/icons/icon.png",
+        "sha256": "6e520543e7f3a2d56ca78ec38d99b4dff0fc96cb291e28f814cb589b8aaf38c6",
+        "origin": "Project-authored 64x64 RGBA application glyph; provenance in operator-desktop/icons/README.md",
+        "license": "MIT"
+      },
+      {
+        "path": "operator-desktop/frontend/brands/bilibili.ico",
+        "sha256": "2681561eb24e7435fea1acf26f3af95e4efc9f7d451587b58bef62f030f337e9",
+        "origin": "Bilibili; exact official source in frontend/brands/sources.json",
+        "license": "Third-party trademark/copyright asset, not MIT",
+        "approval_scope": "Reviewed source asset path only, not a public redistribution clearance"
+      },
+      {
+        "path": "operator-desktop/frontend/brands/qq.png",
+        "sha256": "ee3ab39d757df98d57d676779b97fb8e20d70c97900976b4ffe239f3b6a54bfe",
+        "origin": "Tencent QQ; exact official source in frontend/brands/sources.json",
+        "license": "Third-party trademark/copyright asset, not MIT",
+        "approval_scope": "Reviewed source asset path only, not a public redistribution clearance"
+      },
+      {
+        "path": "operator-desktop/frontend/brands/tieba.jpg",
+        "sha256": "bd941cc1b238226731f3f034b30ce7497ffc9df175f66c765e77ff50d605340c",
+        "origin": "Beijing Baidu Netcom Science & Technology Co.,Ltd; exact official source in frontend/brands/sources.json",
+        "license": "Third-party trademark/copyright asset, not MIT",
+        "approval_scope": "Reviewed source asset path only, not a public redistribution clearance"
+      },
+      {
+        "path": "operator-desktop/frontend/brands/weixin.png",
+        "sha256": "a62d7d84bd02b1718106d294d1f2c8387f9967239696c1e8b446201b63f34dc7",
+        "origin": "Tencent Weixin; exact official source in frontend/brands/sources.json",
+        "license": "Third-party trademark/copyright asset, not MIT",
+        "approval_scope": "Reviewed source asset path only, not a public redistribution clearance"
+      },
+      {
+        "path": "operator-desktop/frontend/brands/antigravity.svg",
+        "sha256": "d775965ea1f8060538c15f758a3e22487317211fcb6051333b5e023f35aa726f",
+        "origin": "Google Antigravity; exact official source in frontend/brands/sources.json",
+        "license": "Third-party trademark/copyright asset, not MIT",
+        "approval_scope": "Reviewed source asset path only, not a public redistribution clearance"
+      },
+      {
+        "path": "operator-desktop/frontend/brands/github.svg",
+        "sha256": "b5e2f4b3f953f075de7016faa952d6ce3ec7492aa7b32408505ec25857962d89",
+        "origin": "GitHub; exact official source in frontend/brands/sources.json",
+        "license": "Third-party trademark/copyright asset, not MIT",
+        "approval_scope": "Reviewed source asset path only, not a public redistribution clearance"
+      },
+      {
+        "path": "operator-desktop/frontend/brands/codex.png",
+        "sha256": "2ce1c57dd3b312417106a487815ab1235bddce17e1fa9b32a2f048bd71ee25d3",
+        "origin": "OpenAI; exact official source in frontend/brands/sources.json",
+        "license": "Third-party trademark/copyright asset, not MIT",
+        "approval_scope": "Reviewed source asset path only, not a public redistribution clearance"
+      }
+    ],
+    "excluded_source_paths": [
+      "scripts/import-qq.sh",
+      "scripts/validate-x-live.py",
+      "scripts/validate-x-expansion-live.py",
+      "operator-desktop/frontend/brands/bilibili.ico",
+      "operator-desktop/frontend/brands/qq.png",
+      "operator-desktop/frontend/brands/tieba.jpg",
+      "operator-desktop/frontend/brands/weixin.png",
+      "operator-desktop/frontend/brands/antigravity.svg",
+      "operator-desktop/frontend/brands/github.svg",
+      "operator-desktop/frontend/brands/codex.png"
+    ]
+  },
+  "rules": [
+    {
+      "paths": [
+        ".gitignore",
+        ".dockerignore",
+        "Cargo.toml",
+        "Cargo.lock",
+        "build.rs",
+        "README.md",
+        "DESIGN.md",
+        "NOTICE",
+        "src/*",
+        "docs/*",
+        "scripts/*",
+        "examples/*",
+        "tests/*",
+        "crates/*/Cargo.toml",
+        "crates/*/README.md",
+        "crates/*/examples/*",
+        "crates/*/tests/*",
+        "README.zh-CN.md"
+      ],
+      "classification": "original_project_source_metadata_docs_tests",
+      "license": "MIT for project-authored material; more-specific origins override",
+      "evidence": "Project-authored source, build metadata, docs and test harnesses. Wildcards cover both direct and nested files; copied data/license exceptions appear later."
+    },
+    {
+      "paths": [
+        "src/**",
+        "build.rs",
+        "crates/runtime-core/src/**",
+        "crates/runtime-content/src/**",
+        "crates/runtime-jobs/src/**",
+        "crates/runtime-engine/src/**",
+        "crates/platform-github/src/**",
+        "crates/runtime-speech/src/**",
+        "crates/runtime-media/src/**",
+        "tests/**/*.rs",
+        "tests/support/**",
+        "examples/**",
+        "scripts/**",
+        "docs/**",
+        "crates/runtime-control/src/**",
+        "crates/runtime-operator/src/**"
+      ],
+      "classification": "original",
+      "license": "MIT",
+      "evidence": "Project-authored orchestration, storage, schema, bounded adapters, operator UI, task routing and tests. Third-party exceptions take precedence; dependency implementation is not ours."
+    },
+    {
+      "paths": [
+        "crates/runtime-engine/data/codex-0.165.0-direct.json",
+        "crates/runtime-engine/data/LICENSE-OpenAI",
+        "crates/runtime-engine/data/NOTICE-OpenAI"
+      ],
+      "classification": "third_party_modified_data",
+      "license": "Apache-2.0",
+      "evidence": "data/README.md: only tool_mode changed; upstream attribution and license retained.",
+      "upstream": "https://github.com/openai/codex/blob/rust-v0.165.0/codex-rs/models-manager/models.json"
+    },
+    {
+      "paths": [
+        "crates/platform-qq/src/protocol.rs",
+        "crates/platform-qq/src/qr.rs",
+        "crates/platform-qq/src/qr_login.rs",
+        "crates/platform-qq/src/message.rs",
+        "crates/platform-qq/src/auth.rs",
+        "crates/platform-qq/src/rich.rs",
+        "crates/platform-qq/src/directory.rs",
+        "crates/platform-qq/src/history.rs",
+        "crates/platform-qq/src/upload.rs",
+        "crates/platform-qq/src/attachments.rs",
+        "crates/platform-qq/src/media.rs",
+        "crates/platform-qq/src/events.rs"
+      ],
+      "classification": "adapted_or_translation_pending_per_file_review",
+      "license": "AGPL-3.0-only retained; no MIT relicense claimed",
+      "evidence": "platform-qq/NOTICE and explicit translation/adaptation comments in protocol.rs, qr.rs, message.rs. New bounded glue may be original; no whole-directory relicense is inferred.",
+      "upstream": "https://github.com/LagrangeDev/LagrangeGo/tree/f7f8abfaa7f1"
+    },
+    {
+      "paths": [
+        "crates/platform-qq/src/tea.rs"
+      ],
+      "classification": "adapted_or_reference_sensitive",
+      "license": "GPL-3.0 reference; existing AGPL header retained pending precise review",
+      "evidence": "platform-qq/NOTICE and LICENSE-TEA-GPL-3.0. Distinguish algorithm facts from an adapted implementation.",
+      "upstream": "https://github.com/fumiama/gofastTEA/tree/v0.1.3"
+    },
+    {
+      "paths": [
+        "crates/runtime-media/vendor/nihav-core/**",
+        "crates/runtime-media/vendor/nihav-codec-support/**",
+        "crates/runtime-media/vendor/nihav-commonfmt/**",
+        "crates/runtime-media/vendor/nihav-itu/**",
+        "crates/runtime-media/vendor/nihav-registry/**"
+      ],
+      "classification": "third_party_vendored",
+      "license": "AGPL-3.0; upstream terms retained",
+      "evidence": "vendor/PROVENANCE.md and NIHAV-COPYING; commit aa33eccc6e9bebd9bd27b7c8a7a18b04dffd0dbd, source unchanged except manifest trimming.",
+      "upstream": "https://git.nihav.org/?p=nihav.git"
+    },
+    {
+      "paths": [
+        "crates/runtime-media/vendor/runtime-silk/src/kernel.rs"
+      ],
+      "classification": "third_party_transpiled",
+      "license": "BSD-3-Clause",
+      "evidence": "runtime-silk/PROVENANCE.md and LICENSE: Skype SDK1.0.9.6 decoder closure, not original merely because output is Rust.",
+      "upstream": "https://github.com/kn007/silk-v3-decoder/tree/507be6bca8ce1fb977a061481f1d79e8c610e309"
+    },
+    {
+      "paths": [
+        "crates/runtime-media/vendor/runtime-silk/src/lib.rs",
+        "crates/runtime-media/vendor/runtime-silk/src/bin/decode.rs",
+        "crates/runtime-media/vendor/runtime-silk/tools/**",
+        "crates/runtime-media/vendor/runtime-silk/tests/bit_exact.rs",
+        "crates/runtime-media/vendor/runtime-silk/tests/vectors/**"
+      ],
+      "classification": "original_wrapper_tools_and_synthetic_fixtures",
+      "license": "MIT for original wrapper/tools/fixtures; generated kernel and copied license remain BSD-3-Clause",
+      "evidence": "Original bounded ownership/framing wrapper and deterministic mathematical synthesis. vectors/provenance.json records source and hashes; generation does not relicense SDK code."
+    },
+    {
+      "paths": [
+        "crates/runtime-media/vendor/rvoip-amr/**"
+      ],
+      "classification": "third_party_vendored_with_original_manifest_glue",
+      "license": "MIT; Jonathan Eisenzopf attribution retained; reference vectors quarantined separately",
+      "evidence": "rvoip-amr/LICENSE and UPSTREAM.md: source archive b1c28127efb2f580e03243c5999ff8a8c13b0ed4cf8a03aaafdb37c23fbf8cbb. Rust AMR kernels/tables are third-party.",
+      "upstream": "https://crates.io/crates/rvoip-codec-core/0.4.0"
+    },
+    {
+      "paths": [
+        "crates/platform-bilibili/src/**",
+        "crates/platform-tieba/src/**",
+        "crates/platform-weixin/src/**"
+      ],
+      "classification": "original_protocol_implementation_with_reference_sensitive_sections",
+      "license": "MIT for demonstrably original code; copied/translated portions retain upstream terms pending review",
+      "evidence": "Bilibili README cites API-collect/bilibili-api; Tieba cites pinned aiotieba/libsgh/tieba-api; Weixin desktop.rs cites reproduced openwechat fixed data. API field knowledge is not automatically copied code; no blanket original claim for reproduced snippets/constants."
+    },
+    {
+      "paths": [
+        "crates/platform-qq/src/lib.rs",
+        "crates/platform-qq/src/wire.rs",
+        "crates/platform-qq/src/session.rs",
+        "crates/platform-qq/src/app_info.rs",
+        "crates/platform-qq/src/key_rotation.rs",
+        "crates/platform-qq/src/login.rs",
+        "crates/platform-qq/src/qr_login.rs"
+      ],
+      "classification": "confirmed_original_rust_glue_with_protocol_facts",
+      "license": "MIT",
+      "evidence": "Authorship review: bounded Rust wire reader/writer; JSON/Base64 Session/Device and atomic storage; AppProfile enum/parser; HTTP/TLS/key rotation; rollback/deadline/identity policies are project-authored, not translated Go bodies. AppInfo constants are upstream protocol facts with attribution; merely calling a copyleft codec is a separate combination question."
+    },
+    {
+      "paths": [
+        "crates/platform-qq/src/password.rs"
+      ],
+      "classification": "mixed_original_policy_and_upstream_login_flow",
+      "license": "MIT for original portions; retained AGPL reference-sensitive portions pending extraction",
+      "evidence": "Original PasswordContinuation/check_session/fingerprint/session_id/captcha checks/rollback/bounded HTTP/query logic. password_inner and prepare_new_device/poll_new_device follow upstream PasswordLogin/SubmitCaptcha/NewDevice schema/flow; no whole-file MIT claim.",
+      "upstream": "https://github.com/LagrangeDev/LagrangeGo/tree/f7f8abfaa7f1beab2a30414298c4f8a628b39555"
+    },
+    {
+      "paths": [
+        "crates/platform-qq/src/signer.rs"
+      ],
+      "classification": "mixed_original_loader_and_reference_signing_shim",
+      "license": "AGPL-3.0-only reference portions retained; original loader/bounds may be MIT after extraction",
+      "evidence": "SignServer reference confirmed by lab README and adaptation chain native_probe.rs -> Rust experiment -> signer.rs. Rust SHA/map checks and lifetime policies are new; ABI/shim source expression remains reference-sensitive. Proprietary wrapper.core.node is unbundled.",
+      "upstream": "https://github.com/nimeng1299/SignServer/tree/c0b515853d6f8de5b28c757d4cdccb8e145f8dc9"
+    },
+    {
+      "paths": [
+        "crates/platform-qq/tests/auth-full-reference_test.go"
+      ],
+      "classification": "confirmed_original_oracle_invocation_harness",
+      "license": "MIT for the original harness; the upstream SDK retains AGPL-3.0",
+      "evidence": "Project-authored test harness invokes the pinned upstream builder without copying its implementation; SPDX is now MIT. Upstream source/combined execution is separately attributed in platform-qq/NOTICE."
+    },
+    {
+      "paths": [
+        "crates/platform-qq/tests/auth-reference.go"
+      ],
+      "classification": "mixed_original_oracle_and_translated_plaintext_sequence",
+      "license": "Original harness may be MIT; translated builder-expression fragment retains reference terms pending review",
+      "evidence": "Most setup/serialization is a synthetic oracle harness; the chained binary.NewBuilder password plaintext sequence directly follows Go ntlogin.go and is separately reference-sensitive.",
+      "upstream": "https://github.com/LagrangeDev/LagrangeGo/tree/f7f8abfaa7f1beab2a30414298c4f8a628b39555"
+    },
+    {
+      "paths": [
+        "crates/platform-qq/tests/referencegen.go"
+      ],
+      "classification": "original_oracle_harness_with_reference_field_layouts",
+      "license": "MIT for authored harness; precise manual Highway expression still to review",
+      "evidence": "Calls pinned SDK APIs with synthetic inputs; a hand-filled Highway protobuf block follows upstream field layout. Do not infer every line was translated or ignore the field-layout provenance."
+    },
+    {
+      "paths": [
+        "crates/platform-qq/tests/reference.json",
+        "crates/platform-qq/tests/auth-reference.json",
+        "crates/platform-qq/tests/auth-full-reference.json"
+      ],
+      "classification": "oracle_generated_synthetic_protocol_data",
+      "license": "MIT intent for authored fixture organization/metadata; protocol facts/output not automatically AGPL code",
+      "evidence": "Serialized frames generated using fixed LagrangeGo and deterministic synthetic inputs, not captured account traffic. AGPL section2 distinguishes program output from the covered program; calling a complete builder does not by itself turn output into AGPL source. Preserve generator and SDK provenance; copied implementation/static data would require separate review."
+    },
+    {
+      "paths": [
+        "crates/platform-bilibili/src/lib.rs",
+        "crates/platform-bilibili/src/http.rs",
+        "crates/platform-bilibili/src/auth.rs",
+        "crates/platform-bilibili/src/id.rs",
+        "crates/platform-bilibili/src/model.rs",
+        "crates/platform-bilibili/src/publications.rs",
+        "crates/platform-bilibili/src/discovery.rs",
+        "crates/platform-bilibili/src/context.rs",
+        "crates/platform-bilibili/src/comments.rs",
+        "crates/platform-bilibili/src/comment_read.rs",
+        "crates/platform-bilibili/src/engagement.rs",
+        "crates/platform-bilibili/src/dynamics.rs",
+        "crates/platform-bilibili/src/danmaku.rs",
+        "crates/platform-bilibili/src/features.rs"
+      ],
+      "classification": "project_authored_rust_protocol_implementation",
+      "license": "MIT",
+      "evidence": "Rust error/transport policies, validation/projection, prepared-action state and semantic operations are authored for this Runtime. Public endpoint/schema facts are referenced; no third-party runtime/library source is imported here. This does not grant rights over any copied snippet identified later."
+    },
+    {
+      "paths": [
+        "crates/platform-bilibili/src/wbi.rs",
+        "crates/platform-bilibili/src/comment_images.rs",
+        "crates/platform-bilibili/src/notifications.rs",
+        "crates/platform-bilibili/src/notification_context.rs"
+      ],
+      "classification": "original_rust_with_reference_sensitive_fragments",
+      "license": "MIT for authored code; permutation/constants/native-URI mappings and cited snippets retain provenance pending precise review",
+      "evidence": "wbi ORDER is published protocol data; comment_images names field references, not a declared Python program translation. notification_context cites several author implementations/userscripts and native_uri data. Review those exact expressions/data, not the entire SDK by an old Cargo label."
+    },
+    {
+      "paths": [
+        "crates/platform-tieba/src/lib.rs",
+        "crates/platform-tieba/src/wire.rs",
+        "crates/platform-tieba/src/model.rs",
+        "crates/platform-tieba/src/transport.rs",
+        "crates/platform-tieba/src/publications.rs",
+        "crates/platform-tieba/src/discovery.rs",
+        "crates/platform-tieba/src/actions.rs",
+        "crates/platform-tieba/src/auth.rs"
+      ],
+      "classification": "project_authored_rust_adapter_with_permissive_protocol_references",
+      "license": "MIT",
+      "evidence": "Own bounded Rust transport/wire/model/action capabilities. Fixed aiotieba reference is Unlicense; libsgh API reference MIT. Schema facts and any reused program expression remain distinguished and attributed."
+    },
+    {
+      "paths": [
+        "crates/platform-tieba/src/notifications.rs",
+        "crates/platform-tieba/src/posting.rs"
+      ],
+      "classification": "original_rust_with_reference_sensitive_interface_fragments",
+      "license": "MIT for authored code; exact cited source/data fragments remain under review",
+      "evidence": "notifications uses pinned TiebaLite NewTiebaApi/MessageListBean schemas; posting references shfshanyue/tieba_post form fields. Endpoint/field facts are distinct from copying control-flow/code; source licenses/versions require explicit pinning."
+    },
+    {
+      "paths": [
+        "crates/platform-weixin/src/lib.rs",
+        "crates/platform-weixin/src/state.rs",
+        "crates/platform-weixin/src/http.rs",
+        "crates/platform-weixin/src/model.rs",
+        "crates/platform-weixin/src/workflow_tests.rs"
+      ],
+      "classification": "project_authored_rust_webwx_implementation",
+      "license": "MIT",
+      "evidence": "Own bounded Rust HTTP/session/model/workflow implementation; openwechat is a protocol reference, not an embedded Go SDK or a copied UOS login patch."
+    },
+    {
+      "paths": [
+        "crates/platform-weixin/src/desktop.rs"
+      ],
+      "classification": "reproduced_fixed_compatibility_data_with_original_rust_container",
+      "license": "Apache-2.0 source attribution retained; original Rust container may be MIT",
+      "evidence": "EXTSPAM constant is explicitly checked byte-for-byte against openwechat global.go. This fixed data must not be called project-original. Other API/version facts and wrapper expression are separate.",
+      "upstream": "https://github.com/eatmoreapple/openwechat/blob/635e5561f3196cb6740f3ffcd36006fa84b61019/global.go"
+    },
+    {
+      "paths": [
+        "crates/runtime-media/vendor/runtime-silk/Cargo.toml",
+        "crates/runtime-media/vendor/runtime-silk/PROVENANCE.md"
+      ],
+      "classification": "original_manifest_and_attribution_for_mixed_component",
+      "license": "MIT for authored metadata/docs; component is MIT AND BSD-3-Clause",
+      "evidence": "Project package metadata/docs describe original MIT wrappers around the separately BSD3 generated kernel; neither scope overrides the other."
+    },
+    {
+      "paths": [
+        "crates/runtime-media/tests/vectors/amr-original/*",
+        "crates/runtime-media/tests/oracle/amr_reference.c"
+      ],
+      "classification": "original_math_signals_oracle_harness_and_reference_output",
+      "license": "MIT for authored harness/fixtures; external OpenCORE Apache-2.0 dependency separate",
+      "evidence": "Parent replaced six includes with self-owned mathematical input and fixed Apache2 OpenCORE oracle output. No upstream 3GPP reference vector is used by these parent tests; provenance/README identify synthesis and oracle."
+    },
+    {
+      "paths": [
+        "docs/dependency-licenses.json"
+      ],
+      "classification": "generated_dependency_metadata",
+      "license": "Factual package metadata; project-authored inventory structure/tools MIT",
+      "evidence": "Generated from locked/offline Cargo metadata: package name/version/license/repository and lock checksums remain third-party facts, not our program implementation or a final binary SBOM."
+    },
+    {
+      "paths": [
+        "LICENSE",
+        "**/LICENSE",
+        "**/LICENSE-*",
+        "**/*COPYING*"
+      ],
+      "classification": "license_document_not_project_implementation",
+      "license": "The stated component/license text, not an original-code MIT relicense",
+      "evidence": "Preserve legal text and existing third-party copyright. Root LICENSE grants project-original portions only; vendor or copied license documents retain their own scope."
+    },
+    {
+      "paths": [
+        "crates/runtime-engine/data/NOTICE-OpenAI"
+      ],
+      "classification": "project_authored_attribution_to_third_party_apache_data",
+      "license": "Apache-2.0 data provenance; notice wording project-authored",
+      "evidence": "Retains OpenAI source/version and direct-mode modification statement; model catalog is not original MIT data."
+    },
+    {
+      "paths": [
+        "crates/platform-qq/NOTICE",
+        "crates/runtime-media/vendor/PROVENANCE.md"
+      ],
+      "classification": "project_authored_third_party_attribution_document",
+      "license": "MIT for authored notice wording; described third-party licenses remain unchanged",
+      "evidence": "Our source/revision/change records; not a claim that the described upstream code is ours."
+    },
+    {
+      "paths": [
+        "crates/platform-tieba/licenses/*.txt"
+      ],
+      "classification": "copied_third_party_license_document",
+      "license": "MIT legal text and upstream holder attribution, not project-original implementation",
+      "evidence": "Retained dsh-tieba-dive/libsgh/tieba-api copyright/license copies."
+    },
+    {
+      "paths": [
+        "crates/platform-weixin/check-container.sh",
+        "crates/platform-weixin/check-reference-container.sh"
+      ],
+      "classification": "original_development_validation_script",
+      "license": "MIT",
+      "evidence": "Project-authored development-only validation commands; no private account data or upstream library source bundled."
+    },
+    {
+      "paths": [
+        "crates/runtime-login-window/**"
+      ],
+      "classification": "original_optional_client_webview_wrapper",
+      "license": "MIT for original Rust protocol, lifecycle and thin system-API bindings; external GTK/WebKit libraries retain their licenses",
+      "evidence": "Project-authored client-only helper, no copied browser implementation. Default features contain no GUI; native-webview explicitly links separately installed system GTK3/WebKitGTK4.1. No Core/platform/model dependency and no browser engine sources or binaries redistributed."
+    },
+    {
+      "paths": [
+        "operator-desktop/**"
+      ],
+      "classification": "original_optional_operator_desktop",
+      "license": "MIT for original frontend, Rust bridge and configuration; external Tauri/system WebView dependencies retain their own licenses",
+      "evidence": "Separate Cargo workspace/lock, static locally owned frontend, no GUI dependency in headless Runtime. Third-party dependency metadata and any copied assets retain precise exceptions."
+    },
+    {
+      "paths": [
+        "crates/runtime-login-window/LICENSE",
+        "operator-desktop/LICENSE"
+      ],
+      "classification": "license_document_not_project_implementation",
+      "license": "MIT license text",
+      "evidence": "Standard MIT grant for project-authored original code, not a claim over external browser/desktop libraries."
+    },
+    {
+      "paths": [
+        "operator-desktop/Cargo.lock",
+        "operator-desktop/dependency-licenses.json"
+      ],
+      "classification": "third_party_dependency_resolution_metadata",
+      "license": "Retained upstream license declarations and checksums; not a project relicense",
+      "evidence": "Cargo resolver metadata for the independently built optional desktop. Actual dependency implementations and system WebView libraries retain their authors and licenses."
+    },
+    {
+      "paths": [
+        "operator-desktop/frontend/brands/**"
+      ],
+      "classification": "third_party_brand_identification_assets",
+      "license": "Original provider copyright/trademarks and asset-specific usage conditions; not MIT",
+      "evidence": "Official website favicons/press or brand files; exact sources, owners and hashes recorded in frontend/brands/sources.json. No asset relicense."
+    },
+    {
+      "paths": [
+        "operator-desktop/frontend/brands/README.md",
+        "operator-desktop/frontend/brands/sources.json"
+      ],
+      "classification": "original_origin_inventory_documentation",
+      "license": "MIT for project-authored inventory/documentation only; described assets retain external rights",
+      "evidence": "Project records asset provenance; no transfer or relicense of the marks."
+    },
+    {
+      "paths": [
+        "crates/platform-x/**"
+      ],
+      "classification": "original_and_upstream_mit_x_web_adapter",
+      "license": "MIT for original material and separately retained upstream MIT copyrights; not a relicense of X scripts/service",
+      "evidence": "See platform-x/NOTICE: fixed Twikit c3b7220866f8582009fe2d1155b6fe92192a2711 and XClientTransaction f33670478bf799c2c10b33894c97347ccb9904a1, with independent original license texts. Live JS corpora remain private development data, not bundled."
+    },
+    {
+      "paths": [
+        "crates/platform-x/src/transaction.rs"
+      ],
+      "classification": "upstream_translation_with_project_bounds",
+      "license": "MIT; Copyright (c) 2025 Sarabjit Dhiman, retained upstream notice",
+      "evidence": "Rust translation of the independently pinned XClientTransaction algorithms; original ownership is retained rather than claimed as project-original."
+    },
+    {
+      "paths": [
+        "crates/platform-x/LICENSE",
+        "crates/platform-x/LICENSE-TWIKIT",
+        "crates/platform-x/LICENSE-XCLIENTTRANSACTION"
+      ],
+      "classification": "retained_license_documents",
+      "license": "MIT license texts with original authors",
+      "evidence": "Original grants retained alongside NOTICE; not project implementation."
+    },
+    {
+      "paths": [
+        "crates/platform-weixin/NOTICE"
+      ],
+      "classification": "project_authored_third_party_attribution_document",
+      "license": "MIT for notice wording; reproduced compatibility data retains Apache-2.0",
+      "evidence": "NOTICE pins the upstream openwechat revision; LICENSE-OPENWECHAT preserves its Apache-2.0 text. The adapter package retains its existing conservative AGPL boundary."
+    }
+  ],
+  "amr_parent_include_sites": [],
+  "release_blockers": [
+    "Review mixed QQ and protocol-reference-sensitive fragments before changing retained license headers.",
+    "Current main binary statically links copyleft QQ/NihAV; original MIT source does not make that combined executable MIT-only.",
+    "Native signer redistribution/linking terms are unverified; native Codex/agy, signing modules and model weights stay out of source release.",
+    "Finish precise origin review and metadata synchronization for mixed protocol fragments before public release; full public-source content review remains pending.",
+    "Confirm intended public-distribution rights for provider logo assets, especially website favicons; retain ownership/brand terms or omit unresolved assets. Path inclusion is not a relicense."
+  ],
+  "rule_precedence": "Last matching rule wins. Broad original-source groups precede narrow third-party/derived/pending exceptions; uncertain material is not relicensed.",
+  "reference_sources": [
+    {
+      "name": "aiotieba",
+      "revision": "3922a9f1f4643f4652bc4a33f853e8aea29ffe24",
+      "license": "Unlicense",
+      "license_url": "https://raw.githubusercontent.com/lumina37/aiotieba/3922a9f1f4643f4652bc4a33f853e8aea29ffe24/LICENSE"
+    },
+    {
+      "name": "libsgh/tieba-api",
+      "revision": "master checked2026-10-31; exact referenced revision still to pin",
+      "license": "MIT",
+      "license_url": "https://raw.githubusercontent.com/libsgh/tieba-api/master/LICENSE"
+    },
+    {
+      "name": "openwechat",
+      "revision": "master checked2026-10-31; desktop constant source revision still to pin",
+      "license": "Apache-2.0",
+      "license_url": "https://raw.githubusercontent.com/eatmoreapple/openwechat/master/LICENSE"
+    },
+    {
+      "name": "inorilzy/bilibili-api",
+      "revision": "main checked2026-10-31; cited source revision still to pin",
+      "license": "GPL-3.0 text",
+      "license_url": "https://raw.githubusercontent.com/inorilzy/bilibili-api/main/LICENSE"
+    }
+  ],
+  "resolved_preparation": {
+    "amr_parent_vectors": "Six includes now use tests/vectors/amr-original; upstream112-vector quarantine remains. Root runtime-media9 tests pass.",
+    "qq_signer_installation": "prepare-qq-signer.sh now requires one explicit absolute user-supplied artifact; no experimental-cache default.",
+    "public_validation": "docs/validation.md is public summary; all historical uppercase VALIDATION.md excluded."
+  }
+}

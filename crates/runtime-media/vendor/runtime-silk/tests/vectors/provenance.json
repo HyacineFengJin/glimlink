@@ -1,0 +1,205 @@
+{
+  "source": {
+    "repo": "kn007/silk-v3-decoder",
+    "revision": "507be6bca8ce1fb977a061481f1d79e8c610e309",
+    "archive_sha256": "d9ee6a2c5ee411f29f3ef31b4a43c238d8aaf942640792012db1ee348b147a38",
+    "url": "https://codeload.github.com/kn007/silk-v3-decoder/tar.gz/507be6bca8ce1fb977a061481f1d79e8c610e309"
+  },
+  "sdk_version": "1.0.9.6",
+  "reference_build": "gcc -O2 -DNDEBUG -fwrapv, generic fixed point; standalone Docker without accounts",
+  "reference_output_rate": 24000,
+  "signals": "All input generated from deterministic mathematical synthesis; no personal speech or platform login",
+  "results": [
+    {
+      "name": "silence8",
+      "rate": 8000,
+      "packet_ms": 20,
+      "tencent": false,
+      "pattern": "silence",
+      "input_sha256": "0c92bddb4e96f3ea9ec9f0f64a668255a6c15527ac09f6f119cafde60c7c4a39",
+      "samples": 48000,
+      "reference_samples": 48000,
+      "byte_differences": 0,
+      "bit_exact": true,
+      "pcm_sha256": "8e88a7fe811b52a5eeb6a995baba1ba04f1ee607797b25b2271f08db66bdd4fb",
+      "silk_sha256": "b52b38a692a41902aa0d5af5af2dc8305c977fbb68cdffc54a725feca951c3ad"
+    },
+    {
+      "name": "sine8",
+      "rate": 8000,
+      "packet_ms": 20,
+      "tencent": true,
+      "pattern": "sine",
+      "input_sha256": "681339633ac91c2564e1ca1cc5e3abf1b91fa57e0e3c24627d6c654b680bc15f",
+      "samples": 48000,
+      "reference_samples": 48000,
+      "byte_differences": 0,
+      "bit_exact": true,
+      "pcm_sha256": "cb2667cba8979e727a7a745254d8a6bce0be322e60d829f40f6a6f264475f8c1",
+      "silk_sha256": "70b0e1dfda5ae733e8081ae05161d2e3ccc5d9bb6bfe39197a3b509ac3bb9c53"
+    },
+    {
+      "name": "mix12",
+      "rate": 12000,
+      "packet_ms": 40,
+      "tencent": false,
+      "pattern": "mix",
+      "input_sha256": "bb5e3c6a6b7b05a8b9e61602a771617d0b8342b5b5d9519e791629c9799f67da",
+      "samples": 48000,
+      "reference_samples": 48000,
+      "byte_differences": 0,
+      "bit_exact": true,
+      "pcm_sha256": "41934f88e72e7edcef397eecbc3741de4af6f76281aff395503b29b73e28c6a6",
+      "silk_sha256": "83496c53bd2e3b0d5487363b59f969e2ae1832f9741b17e56aa191c2966d81c2"
+    },
+    {
+      "name": "mix16",
+      "rate": 16000,
+      "packet_ms": 20,
+      "tencent": true,
+      "pattern": "mix",
+      "input_sha256": "dfc80584966efd8a6dce6bb51b9bfb30e022dae0d72373b53e953ce389709bbf",
+      "samples": 48000,
+      "reference_samples": 48000,
+      "byte_differences": 0,
+      "bit_exact": true,
+      "pcm_sha256": "cf801f8e4989d8b509836fb1bd7c9140b715aca7af9e87936eee9f9c32e4ab0b",
+      "silk_sha256": "9ea50156215e58238d252258b5901be9c8bf5cebb3eda655d50fb0549f359812"
+    },
+    {
+      "name": "chirp24",
+      "rate": 24000,
+      "packet_ms": 40,
+      "tencent": false,
+      "pattern": "chirp",
+      "input_sha256": "453dc88b9f0b6b37997273c52b47103a83020eccfbff4a84037b653dac2acd56",
+      "samples": 48000,
+      "reference_samples": 48000,
+      "byte_differences": 0,
+      "bit_exact": true,
+      "pcm_sha256": "19072295cec46aa039de88a77df24c07ccd2b0284659a94d6cab7913323a0d3b",
+      "silk_sha256": "dcae01e9f7697c5edccb52a445f9e31d4ea297b6a272b8615aa374548b0113da"
+    },
+    {
+      "name": "noise16",
+      "rate": 16000,
+      "packet_ms": 60,
+      "tencent": true,
+      "pattern": "noise",
+      "input_sha256": "0334c7cecab0465079b6f96907043461c16887e6e960ec8fe741f48cc49a4468",
+      "samples": 47520,
+      "reference_samples": 47520,
+      "byte_differences": 0,
+      "bit_exact": true,
+      "pcm_sha256": "0ba561814b9a0f523c1382f6c77e439be7754209346f18791311c4c292d86621",
+      "silk_sha256": "7875f8fc4de1ec829ca700f861d3f77030cb511bed2a8262bff61cc6288f9b92"
+    },
+    {
+      "name": "impulse24",
+      "rate": 24000,
+      "packet_ms": 100,
+      "tencent": false,
+      "pattern": "impulse",
+      "input_sha256": "7437c25d4675a6a8497cfb2c73cae678e840073d50cf5e0cbc3910c0bfb98f43",
+      "samples": 48000,
+      "reference_samples": 48000,
+      "byte_differences": 0,
+      "bit_exact": true,
+      "pcm_sha256": "6625c74bc8be851cb35860012fbf54a3f8f10fa7506c7582213ffd2c83d5a233",
+      "silk_sha256": "bedd6caf9320c851506485ee6a3b3943cb960b8c3dc3c4520ed651b5d716b4e0"
+    }
+  ],
+  "extended": [
+    {
+      "name": "mix16.rate8000",
+      "source": "mix16.silk",
+      "output_rate": 8000,
+      "samples": 16000,
+      "byte_differences": 0,
+      "pcm_sha256": "0c234a4462de04c524c4e59b5f9b66fca6eeb10fa14f2ced1adfe3e163356eac",
+      "silk_sha256": "9ea50156215e58238d252258b5901be9c8bf5cebb3eda655d50fb0549f359812"
+    },
+    {
+      "name": "mix16.rate12000",
+      "source": "mix16.silk",
+      "output_rate": 12000,
+      "samples": 24000,
+      "byte_differences": 0,
+      "pcm_sha256": "a4b0a1bf41a651f71136d4c977f36c0fc6f9cc06745317d76c464558d608c219",
+      "silk_sha256": "9ea50156215e58238d252258b5901be9c8bf5cebb3eda655d50fb0549f359812"
+    },
+    {
+      "name": "mix16.rate16000",
+      "source": "mix16.silk",
+      "output_rate": 16000,
+      "samples": 32000,
+      "byte_differences": 0,
+      "pcm_sha256": "c02381507590ddd12061ff7640b2521747cca976cd88ee13c975854e5d5ed1f1",
+      "silk_sha256": "9ea50156215e58238d252258b5901be9c8bf5cebb3eda655d50fb0549f359812"
+    },
+    {
+      "name": "mix16.rate24000",
+      "source": "mix16.silk",
+      "output_rate": 24000,
+      "samples": 48000,
+      "byte_differences": 0,
+      "pcm_sha256": "cf801f8e4989d8b509836fb1bd7c9140b715aca7af9e87936eee9f9c32e4ab0b",
+      "silk_sha256": "9ea50156215e58238d252258b5901be9c8bf5cebb3eda655d50fb0549f359812"
+    },
+    {
+      "name": "mix16.rate32000",
+      "source": "mix16.silk",
+      "output_rate": 32000,
+      "samples": 64000,
+      "byte_differences": 0,
+      "pcm_sha256": "e986574a4c7dd8fcfa92d874c9c7b72a5849cb1cd1f5972bf13fe1ef4a17afb2",
+      "silk_sha256": "9ea50156215e58238d252258b5901be9c8bf5cebb3eda655d50fb0549f359812"
+    },
+    {
+      "name": "mix16.rate44100",
+      "source": "mix16.silk",
+      "output_rate": 44100,
+      "samples": 88200,
+      "byte_differences": 0,
+      "pcm_sha256": "d9df336cee7614035b290802422ccd45ff46e83b0a2abc8b1cb2fdc703c88696",
+      "silk_sha256": "9ea50156215e58238d252258b5901be9c8bf5cebb3eda655d50fb0549f359812"
+    },
+    {
+      "name": "mix16.rate48000",
+      "source": "mix16.silk",
+      "output_rate": 48000,
+      "samples": 96000,
+      "byte_differences": 0,
+      "pcm_sha256": "5dc87d336f807718d7ff2885934c05bdf4781b9605acd7a158b6a57d3871d885",
+      "silk_sha256": "9ea50156215e58238d252258b5901be9c8bf5cebb3eda655d50fb0549f359812"
+    },
+    {
+      "name": "dtx8",
+      "source": "dtx8.silk",
+      "output_rate": 24000,
+      "samples": 96000,
+      "byte_differences": 0,
+      "pcm_sha256": "b76c55981a9ea0fec743a7112317b41c5fcfa25eb43c3c349508dbecb129e789",
+      "silk_sha256": "0ddf1275cfaebde9acc1848c94af02642a4fa59d2cbd8e83ceb1469d491e7016"
+    },
+    {
+      "name": "dtx16",
+      "source": "dtx16.silk",
+      "output_rate": 24000,
+      "samples": 96000,
+      "byte_differences": 0,
+      "pcm_sha256": "9b5e68e21cdfd334922ed17600a6d629552de44f72dc3aa189015c4bc31c33d1",
+      "silk_sha256": "7241c216425175c78641f31af8414c3cdb32d87d530972b2472ffc817b6f15db"
+    }
+  ],
+  "generator": "tools/synthesize.py",
+  "generation": {
+    "c2rust": "0.22.1",
+    "clang": "15.0.6",
+    "rust": "1.90.0",
+    "kernel_sha256": "e5ec6475e76292c704de5fa37197f94d4b036a52338276c50f34d28ae09d4dc5",
+    "decoder_source_count": 54,
+    "regeneration_verified": true
+  },
+  "total_compared_samples": 895720
+}

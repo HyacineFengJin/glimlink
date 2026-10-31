@@ -1,0 +1,15 @@
+Personal-account WebWx adapter: source and attribution
+
+Project-authored Rust HTTP, session, model and workflow code is MIT where marked.
+The crate retains its conservative AGPL-3.0-only package boundary; this does not
+replace the licenses of its independently identified source portions.
+
+src/desktop.rs reproduces the EXTSPAM compatibility data from:
+  eatmoreapple/openwechat
+  commit 635e5561f3196cb6740f3ffcd36006fa84b61019
+  https://github.com/eatmoreapple/openwechat/blob/635e5561f3196cb6740f3ffcd36006fa84b61019/global.go
+  Apache-2.0; original license retained in LICENSE-OPENWECHAT.
+
+The data was placed in a Rust constant container. No Go runtime or native Weixin
+client is bundled. The source's upstream rights are not included in the root MIT
+grant. Personal-account execution is disabled in the default build.

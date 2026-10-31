@@ -1,0 +1,41 @@
+platform-x: read-only Rust X web-session adapter
+
+The HTTP operation variables, selected legacy feature defaults and response
+shape handling reference/adapt Twikit, not an original discovery attributed to
+this project:
+
+  d60/twikit
+  https://github.com/d60/twikit
+  Fixed revision: c3b7220866f8582009fe2d1155b6fe92192a2711
+  Copyright (c) 2024 d60
+  MIT; original notice and license: LICENSE-TWIKIT
+  Referenced files: twikit/client/{client,gql,v11}.py, constants.py,
+  x_client_transaction/{transaction,cubic_curve,interpolate,rotation,utils}.py.
+
+The transaction generator, animation interpolation, cubic curve, rotation and
+floating-point hexadecimal encoding in src/transaction.rs are Rust translations
+and bounded adaptations of the separate upstream XClientTransaction project:
+
+  iSarabjitDhiman/XClientTransaction
+  https://github.com/iSarabjitDhiman/XClientTransaction
+  Fixed revision: f33670478bf799c2c10b33894c97347ccb9904a1
+  Copyright (c) 2025 Sarabjit Dhiman
+  MIT; original notice and license: LICENSE-XCLIENTTRANSACTION
+  Referenced files: x_client_transaction/{transaction,cubic_curve,interpolate,
+  rotation,utils,constants}.py. This separate license was checked independently
+  of Twikit's top-level MIT license.
+
+Changes include replacing Python/BeautifulSoup with bounded Rust extraction,
+no JavaScript execution, explicit errors instead of implicit defaults, OS random
+bytes, bounded cubic iterations, static host restrictions and static public
+errors. The original transaction algorithm and upstream authorship are retained.
+
+Current x-web operation/variable/result field metadata was independently checked
+against publicly served X homepage and JavaScript assets on 2026-10-31. The
+downloaded JavaScript is parsed as data, never executed. X scripts, trademarks,
+service and account entitlements are not relicensed by this crate. Only synthetic
+fixtures and small protocol field names/values are included in source; public
+page/script corpora used for optional offline checks remain outside the crate.
+
+No upstream Python package, browser, JavaScript engine, Node, Bun or V8 is linked
+or executed by this adapter. No credential or account data is included.

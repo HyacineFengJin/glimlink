@@ -1,0 +1,16 @@
+[package]
+name = "runtime-operator"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+license = "MIT"
+description = "Thin local/SSH human operator client for Agent Runtime"
+
+[[bin]]
+name = "agentctl"
+path = "src/main.rs"
+
+[dependencies]
+runtime-control = { path = "../runtime-control", features = ["human-ui"] }
+serde_json = "1"
+libc = "0.2"

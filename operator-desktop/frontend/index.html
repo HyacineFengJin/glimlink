@@ -1,0 +1,131 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MIT -->
+<html lang="zh-CN" data-theme="iris" data-density="comfortable">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Glimlink Operator</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="rail" aria-label="主导航">
+      <div class="brand-mark" aria-label="Glimlink"><span></span><span></span><span></span></div>
+      <div class="rail-items">
+        <button class="rail-button selected" aria-label="账号与登录" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="6"/><circle cx="12" cy="10" r="2.2"/><path d="M8 16c.8-2.7 7.2-2.7 8 0"/></svg><span>账号</span></button>
+        <button class="rail-button" id="connection-shortcut" aria-label="连接设置"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 8 2-2a4.2 4.2 0 0 1 6 6l-2 2M8 10l-2 2a4.2 4.2 0 0 0 6 6l2-2m-5-1 6-6"/></svg><span>连接</span></button>
+        <button class="rail-button" id="activity-shortcut" aria-label="查看活动"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h4l2-6 4 12 2-6h4"/></svg><span>活动</span></button>
+      </div>
+      <div class="rail-foot"><span class="tiny-spark">✳</span><span>本机 UI</span></div>
+    </aside>
+
+    <main class="workspace">
+      <header class="page-header">
+        <div class="header-copy"><div class="eyebrow">GLIMLINK <span class="eyebrow-dot"></span> YOUR OPERATOR</div><h1>让连接，<span class="title-emphasis">简单一点<span class="title-dot">。</span></span><svg class="headline-flower" viewBox="0 0 64 64" aria-hidden="true"><path d="M32 4c8-10 16 0 12 10 11-4 20 5 10 12 12 5 7 17-5 17 4 11-9 18-17 8-8 10-21 3-17-8-12 0-17-12-5-17C0 19 9 10 20 14 16 4 24-6 32 4Z"/><circle cx="32" cy="29" r="7"/></svg></h1><p>管理你的账号与验证，把更轻的 Runtime 留给远方。</p></div>
+        <div class="header-actions">
+          <div class="personalization">
+            <button class="personalize-button" id="personalize-toggle" type="button" aria-expanded="false" aria-controls="personalize-panel"><span class="palette-dots" aria-hidden="true"><i></i><i></i><i></i></span>我的配色<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></button>
+            <section class="personalize-panel" id="personalize-panel" aria-labelledby="personalize-title" hidden>
+              <div class="personalize-heading"><div><span class="eyebrow">MAKE IT YOURS</span><h2 id="personalize-title">一点你的个性</h2></div><span aria-hidden="true">✳</span></div>
+              <div class="theme-options" role="group" aria-label="配色主题">
+                <button class="theme-choice" data-theme-choice="iris" type="button" aria-pressed="true"><span class="theme-preview preview-iris" aria-hidden="true"><i></i><i></i><i></i></span><strong>鸢尾紫</strong><span>灵感上线</span><b class="choice-check" aria-hidden="true">✓</b></button>
+                <button class="theme-choice" data-theme-choice="lagoon" type="button" aria-pressed="false"><span class="theme-preview preview-lagoon" aria-hidden="true"><i></i><i></i><i></i></span><strong>深海青</strong><span>清爽出发</span><b class="choice-check" aria-hidden="true">✓</b></button>
+                <button class="theme-choice" data-theme-choice="sunset" type="button" aria-pressed="false"><span class="theme-preview preview-sunset" aria-hidden="true"><i></i><i></i><i></i></span><strong>落日橙</strong><span>暖一点点</span><b class="choice-check" aria-hidden="true">✓</b></button>
+              </div>
+              <div class="density-setting"><span>界面密度</span><div role="group" aria-label="界面密度"><button class="density-choice" data-density-choice="comfortable" type="button" aria-pressed="true">舒展</button><button class="density-choice" data-density-choice="compact" type="button" aria-pressed="false">紧凑</button></div></div>
+              <p>仅保存配色与密度，不保存账号或连接信息。</p>
+            </section>
+          </div>
+          <div class="channel-actions"><span class="bridge-badge" id="bridge-badge"><i></i>检查操控通道</span><button class="icon-button" id="refresh-all" title="检查所有账号" aria-label="检查所有账号"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 8a8 8 0 1 0 .4 7M19 3v5h-5"/></svg></button></div>
+        </div>
+      </header>
+
+      <div class="preview-banner" id="preview-banner" hidden><span>界面预览</span> 当前没有连接 Tauri 后端，真实账号操作已禁用。</div>
+
+      <section class="overview-strip" aria-label="当前概览">
+        <div class="overview-intro"><div class="overview-orbit" aria-hidden="true"><svg viewBox="0 0 64 64"><path d="M22 4h20l-1 12 11-6 10 18-11 5 11 6-10 17-11-7 1 12H22l1-12-11 7L2 39l11-6L2 28l10-18 11 6Z"/><circle cx="32" cy="33" r="9"/></svg></div><div><span class="small-label">轻巧连接，自在掌控</span><strong id="connection-summary">控制这台电脑上的 Runtime</strong><span class="overview-subtitle">本机与远端，同一套协议</span></div></div>
+        <div class="overview-count"><strong id="verified-count">—</strong><span>已核验登录</span></div>
+        <div class="overview-count"><strong id="saved-count">—</strong><span>已保存会话</span></div>
+        <div class="overview-active"><span class="status-light" id="active-light"></span><div><strong id="active-status">等待你的操作</strong><span id="active-description">优先复用已有登录态</span></div><button class="small-button" id="cancel-active" hidden>取消</button></div>
+      </section>
+
+      <div class="bento-grid">
+        <div class="integration-panels">
+          <section class="agents-panel" aria-labelledby="agents-title">
+            <div class="section-heading"><div><h2 id="agents-title" data-index="01">Agent 引擎</h2><p>分别使用订阅，共用人格与记忆。</p></div><span class="section-chip">驱动 AI</span></div>
+            <div class="account-grid agent-grid" id="agent-grid"></div>
+          </section>
+          <section class="accounts-panel" aria-labelledby="accounts-title">
+            <div class="section-heading"><div><h2 id="accounts-title" data-index="02">社交平台</h2><p>消息、社区与内容，使用各自的真实账号。</p></div><span class="section-chip">连接世界</span></div>
+            <div class="account-grid" id="account-grid"></div>
+          </section>
+          <section class="applications-panel" aria-labelledby="applications-title">
+            <div class="section-heading"><div><h2 id="applications-title" data-index="03">应用与协作</h2><p>开发协作与其他应用，各自保留业务语义。</p></div><span class="section-chip">完成工作</span></div>
+            <div class="account-grid application-grid" id="application-grid"></div>
+          </section>
+          <div class="accounts-note"><span class="note-symbol">↗</span><p>二维码与验证窗口在操控端打开。订阅授权使用系统浏览器；凭据不会交给 AI。</p></div>
+        </div>
+
+        <aside class="side-column">
+          <section class="connection-card surface-card" id="connection-card" aria-labelledby="connection-title">
+            <div class="card-heading"><div class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="3"/><path d="M9 20h6m-3-4v4"/></svg></div><div><h2 id="connection-title">Runtime 在哪里</h2><p>本地使用也是控制自己</p></div></div>
+            <form id="connection-form">
+              <div class="segmented-control" role="group" aria-label="连接方式"><button class="segment selected" type="button" data-mode="local" aria-pressed="true">本机</button><button class="segment" type="button" data-mode="ssh" aria-pressed="false">SSH 远端</button></div>
+              <label class="field ssh-field" hidden><span>SSH 目标</span><input id="destination" placeholder="user@my-vps 或 SSH 别名" autocomplete="off" spellcheck="false"></label>
+              <div class="field-row"><label class="field"><span>账号别名</span><input id="account" value="main" required maxlength="128" autocomplete="off" spellcheck="false"></label><span class="field-hint" title="同一个别名在每个平台绑定各自的真实账号">明确选择<br>不自动换号</span></div>
+              <label class="field"><span>状态目录</span><input id="state" value=".runtime/state" required autocomplete="off" spellcheck="false"></label>
+              <details class="connection-details"><summary>可执行文件路径 <span>可选</span></summary><label class="field"><span class="sr-only">Runtime 可执行文件</span><input id="runtime-binary" placeholder="默认使用相邻 agent-runtime" autocomplete="off" spellcheck="false"></label></details>
+              <button class="filled-button apply-button" type="submit"><span>应用并检查</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5"/></svg></button>
+            </form>
+            <p class="connection-feedback" id="connection-feedback" role="status">连接配置只留在当前操控会话。</p>
+          </section>
+
+          <section class="memory-card surface-card" aria-labelledby="memory-title">
+            <div class="memory-heading"><div><h2 id="memory-title">内存监视</h2><p>操控端 · 含本机子进程</p></div><button id="memory-toggle" class="memory-toggle" type="button" aria-pressed="false" aria-label="暂停内存采样">暂停</button></div>
+            <div class="memory-values"><div><span id="memory-metric" class="memory-metric">等待实际采样</span><strong id="memory-value">—</strong><span class="memory-unit">MiB</span></div><svg class="memory-chart" viewBox="0 0 100 40" role="img" aria-label="最近的内存采样趋势"><path d="M0 37h100"/><polyline id="memory-trend" points=""/></svg></div>
+            <div class="memory-details"><span>RSS <b id="memory-rss">—</b></span><span><b id="memory-processes">—</b> 个进程</span></div>
+            <p class="memory-message" id="memory-message" role="status">尚无测量数据。</p>
+            <div class="memory-footer"><span><i></i><span id="memory-state">等待采样</span></span><time id="memory-time">—</time></div>
+            <p class="memory-scope">仅统计当前操控端，不代表远端 Runtime。</p>
+          </section>
+
+          <section class="activity-card surface-card" id="activity-card" aria-labelledby="activity-title"><div class="activity-heading"><h2 id="activity-title">刚刚发生</h2><span class="live-mark">本次会话</span></div><ol id="activity-list"><li class="activity-empty">还没有操作。准备好后，检查一个账号。</li></ol></section>
+        </aside>
+      </div>
+      <footer class="page-footer"><span><i></i> UI 与 Runtime 分离 · 原创部分 MIT</span><span>验证窗口按需打开，用完即关闭</span></footer>
+    </main>
+  </div>
+
+  <dialog id="input-dialog" class="input-dialog">
+    <form id="input-form">
+      <button class="dialog-close" id="input-close" type="button" aria-label="取消输入并取消登录">×</button>
+      <div class="dialog-symbol">↗</div>
+      <div class="eyebrow" id="input-platform">私密输入</div>
+      <h2 id="input-title">完成这次登录</h2>
+      <p id="input-message">信息通过私有连接交给 Runtime，不进入 AI 上下文。</p>
+      <label class="field" id="uin-field" hidden><span>QQ 账号</span><input id="input-uin" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="16"></label>
+      <label class="field" id="input-value-field"><span id="input-label">验证信息</span><input id="input-value" type="password" autocomplete="off" spellcheck="false" maxlength="262144" required></label>
+      <div id="cookie-fields" hidden>
+        <button id="x-browser-open" class="filled-button x-window-open" type="button">在系统浏览器打开 X <span>↗</span></button>
+        <p id="x-browser-feedback" class="x-window-feedback" role="status">可复用浏览器已有登录。完成后返回这里，一次粘贴会话。</p>
+        <button id="x-window-open" class="filled-button x-window-open native-login-button" type="button">或使用内置 X 登录窗口 <span>↗</span></button>
+        <p id="x-window-feedback" class="x-window-feedback" role="status"></p>
+        <div class="cookie-import-divider">或私密导入已有浏览器会话</div>
+        <p class="cookie-import-help">从已登录 x.com 的浏览器开发者工具复制完整 Cookie 请求头，一次粘贴即可。也可分别填写所需字段。</p>
+        <div class="cookie-mode-control" role="group" aria-label="Cookie 导入方式"><button type="button" data-cookie-mode="header" aria-pressed="true">一次粘贴</button><button type="button" data-cookie-mode="fields" aria-pressed="false">分别填写</button></div>
+        <label class="field" id="cookie-header-field"><span>Cookie 请求头</span><input id="input-cookie-header" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="32768" disabled></label>
+        <div id="cookie-pair-fields" hidden>
+          <label class="field"><span>auth_token</span><input id="input-auth-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="4096" disabled></label>
+          <label class="field"><span>ct0</span><input id="input-ct0" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="512" disabled></label>
+        </div>
+      </div>
+      <p class="dialog-privacy" id="input-privacy">只用于当前登录。提交后立即清空本页输入。</p>
+      <div class="dialog-actions"><button class="text-button" id="input-cancel" type="button">取消登录</button><button class="filled-button" id="input-submit" type="submit">安全提交 <span>↗</span></button></div>
+      <p id="input-error" class="input-error" role="alert"></p>
+    </form>
+  </dialog>
+  <div class="toast" id="toast" role="status" hidden></div>
+</body>
+</html>

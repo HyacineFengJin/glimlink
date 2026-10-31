@@ -1,0 +1,75 @@
+# Glimlink
+
+[English](README.md) | [简体中文](README.zh-CN.md)
+
+以 Rust 为主的轻量 Agent Runtime，用于平台交互、共享人格与记忆。
+
+Glimlink 把平台协议和媒体处理收拢成任务工具。AI 决定读什么、做什么，
+Runtime 处理账号会话、目标、分页、下载和操作回执。
+
+## 功能
+
+- 接入 Codex、Antigravity 订阅登录，共享人格与记忆。
+- 通过 MCP 或托管 Agent 宿主提供语义化平台工具。
+- 按需处理图片、GIF、视频画面和语音。
+- 精简无界面的 Runtime，与独立可选操控端通过本地管道或 SSH 连接。
+
+Runtime 不嵌入浏览器内核、V8、Blink 或 Chromium。桌面操控端可使用
+操作系统的 WebView 完成人工登录。
+
+## 平台范围
+
+| 平台 | 当前范围 |
+| --- | --- |
+| Bilibili / 贴吧 | 内容、讨论、通知及部分互动 |
+| GitHub | 仓库、Issue、PR 及协作工具 |
+| X | 只读资料、帖子、时间线及按需媒体 |
+| QQ | 已有 Rust 聊天与媒体实现，当前实号登录受阻 |
+| 微信 | 暂停，默认构建不包含客户端 |
+
+部分新增写入只有协议测试，尚未完成实号验收。具体边界见[验收记录](docs/validation.md)。
+
+## 构建与运行
+
+已验证目标为 Linux，需要 Rust 1.90+ 及系统 C 编译／链接工具。
+请在开发机编译；512 MiB VPS 的内存目标针对运行阶段。
+
+```sh
+cargo build --release --locked -p agent-runtime -p runtime-operator
+./target/release/agent-runtime tools
+./target/release/agent-runtime --state .runtime/state mcp
+```
+
+目前 CLI 程序名为 `agent-runtime`，登录管理程序为 `agentctl`。
+运行模型任务前需另外安装 Codex／Antigravity 原生程序；两者使用独立认证目录，
+保留订阅登录。
+
+```sh
+./target/release/agentctl --runtime ./target/release/agent-runtime \
+  --state .runtime/state --account personal bilibili login
+```
+
+继续阅读[操控端与 SSH](docs/operator-control.md)、[引擎登录](docs/engine-login.md)、
+[岗位配置](docs/agent-profiles.md)和可选的[桌面操控端](operator-desktop/README.md)。
+
+## 开发
+
+Docker 构建和测试使用隔离的源码副本：
+
+```sh
+bash scripts/isolate.sh build online -- sh /workspace/scripts/cargo.sh fetch --locked
+bash scripts/isolate.sh build -- sh /workspace/scripts/build-container.sh
+bash scripts/isolate.sh build -- sh /workspace/scripts/cargo.sh test \
+  --locked --offline --workspace --exclude platform-weixin --features agent-host-tests
+```
+
+首次构建需要下载依赖；可去掉 `--offline`，或在 `online` 构建容器中预先获取。
+Runtime 测试限额为 384 MiB；完整 512 MiB VPS 工作负载仍需单独验收。
+
+## 许可
+
+本项目原创代码使用 MIT；第三方组件及移植部分保留原许可，其中包含 AGPL／GPL
+部分，组合程序不属于纯 MIT。详见 [LICENSE](LICENSE)、[NOTICE](NOTICE)
+和[源码归属说明](docs/OPEN_SOURCE.md)。
+
+仓库不包含账号资料、下载的引擎／签名模块／模型、本地报告及构建产物。

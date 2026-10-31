@@ -1,0 +1,11 @@
+# Development-only GUI toolchain. This image is not used by the VPS Runtime.
+FROM rust:1.90-bookworm@sha256:3914072ca0c3b8aad871db9169a651ccfce30cf58303e5d6f2db16d1d8a7e58f
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgtk-3-dev libwebkit2gtk-4.1-dev xvfb xauth dbus-x11 fonts-dejavu-core python3 \
+    && rm -rf /var/lib/apt/lists/*
+ARG OPERATOR_UID=1000
+RUN if ! getent passwd "$OPERATOR_UID" >/dev/null; then \
+      useradd --uid "$OPERATOR_UID" --no-create-home --no-user-group --shell /usr/sbin/nologin runtime-operator-test; \
+    fi
+RUN apt-get update && apt-get install -y --no-install-recommends fonts-noto-cjk \
+    && rm -rf /var/lib/apt/lists/*

@@ -1,0 +1,90 @@
+{
+  "schema": 1,
+  "scope": "Provider identification only. Not project artwork and not relicensed under MIT. Official publication rights and trademark conditions remain separate from source-path inclusion.",
+  "assets": [
+    {
+      "file": "bilibili.ico",
+      "owner": "Bilibili",
+      "source_url": "https://www.bilibili.com/favicon.ico",
+      "source_page": "https://www.bilibili.com/",
+      "usage_terms": "https://www.bilibili.com/blackboard/protocal/licence.html",
+      "sha256": "2681561eb24e7435fea1acf26f3af95e4efc9f7d451587b58bef62f030f337e9",
+      "downloaded_on": "2026-10-31",
+      "modifications": "None; exact original bytes",
+      "license": "Third-party trademark/copyright asset, not MIT",
+      "usage": "Official-site identification asset; no blanket redistribution license established"
+    },
+    {
+      "file": "qq.png",
+      "owner": "Tencent QQ",
+      "source_url": "https://static-res.qq.com/static-res/imqq/qq-logo.png",
+      "source_page": "https://im.qq.com/index/",
+      "usage_terms": "https://www.tencent.com/legal-statement/",
+      "sha256": "ee3ab39d757df98d57d676779b97fb8e20d70c97900976b4ffe239f3b6a54bfe",
+      "downloaded_on": "2026-10-31",
+      "modifications": "None; exact original bytes",
+      "license": "Third-party trademark/copyright asset, not MIT",
+      "usage": "Unchanged 62x62 logo linked by the official QQ home page; Tencent brand rights reserved"
+    },
+    {
+      "file": "tieba.jpg",
+      "owner": "Beijing Baidu Netcom Science & Technology Co.,Ltd",
+      "source_url": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/6a/35/c0/6a35c051-7f95-11bd-d81b-23562f0b4224/AppIcon-0-0-1x_U007emarketing-0-8-0-sRGB-85-220.png/100x100bb.jpg",
+      "source_page": "https://apps.apple.com/cn/app/id477927812",
+      "usage_terms": "https://www.baidu.com/duty/",
+      "sha256": "bd941cc1b238226731f3f034b30ce7497ffc9df175f66c765e77ff50d605340c",
+      "downloaded_on": "2026-10-31",
+      "modifications": "None; exact original bytes",
+      "license": "Third-party trademark/copyright asset, not MIT",
+      "usage": "Unchanged icon published by Baidu on its official App Store listing; no blanket redistribution grant inferred"
+    },
+    {
+      "file": "weixin.png",
+      "owner": "Tencent Weixin",
+      "source_url": "https://res.wx.qq.com/a/wx_fed/assets/res/NTI4MWU5.ico",
+      "source_page": "https://weixin.qq.com/",
+      "usage_terms": "https://www.tencent.com/legal-statement/",
+      "sha256": "a62d7d84bd02b1718106d294d1f2c8387f9967239696c1e8b446201b63f34dc7",
+      "downloaded_on": "2026-10-31",
+      "modifications": "None; exact original bytes",
+      "license": "Third-party trademark/copyright asset, not MIT",
+      "usage": "Official website linked favicon, PNG bytes despite URL suffix; Tencent trademark/copyright terms apply"
+    },
+    {
+      "file": "antigravity.svg",
+      "owner": "Google Antigravity",
+      "source_url": "https://antigravity.google/assets/image/brand/antigravity-icon__full-color.svg",
+      "source_page": "https://antigravity.google/press",
+      "usage_terms": "https://about.google/brand-resource-center/",
+      "sha256": "d775965ea1f8060538c15f758a3e22487317211fcb6051333b5e023f35aa726f",
+      "downloaded_on": "2026-10-31",
+      "modifications": "None; exact original bytes",
+      "license": "Third-party trademark/copyright asset, not MIT",
+      "usage": "Official press icon; brand rights reserved, not an open-source asset license"
+    },
+    {
+      "file": "github.svg",
+      "owner": "GitHub",
+      "source_url": "https://brand.github.com/GitHub_Logos.zip",
+      "source_page": "https://brand.github.com/foundations/logo",
+      "usage_terms": "https://brand.github.com/foundations/logo",
+      "sha256": "b5e2f4b3f953f075de7016faa952d6ce3ec7492aa7b32408505ec25857962d89",
+      "downloaded_on": "2026-10-31",
+      "modifications": "None; exact original bytes",
+      "license": "Third-party trademark/copyright asset, not MIT",
+      "usage": "Original archive member GitHub Logos/SVG/GitHub_Invertocat_Black_Clearspace.svg; integration identification permitted under GitHub brand rules"
+    },
+    {
+      "file": "codex.png",
+      "owner": "OpenAI",
+      "source_url": "https://openai.gallerycdn.vsassets.io/extensions/openai/chatgpt/26.51021.22027/1792788319200/Microsoft.VisualStudio.Services.Icons.Default",
+      "source_page": "https://marketplace.visualstudio.com/items?itemName=openai.chatgpt",
+      "usage_terms": "https://openai.com/brand/",
+      "sha256": "2ce1c57dd3b312417106a487815ab1235bddce17e1fa9b32a2f048bd71ee25d3",
+      "downloaded_on": "2026-10-31",
+      "modifications": "None; exact original bytes",
+      "license": "Third-party trademark/copyright asset, not MIT",
+      "usage": "Unchanged icon from the OpenAI-published Codex extension listing; OpenAI brand terms apply"
+    }
+  ]
+}

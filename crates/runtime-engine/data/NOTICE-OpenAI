@@ -1,0 +1,5 @@
+Codex model metadata is derived from https://github.com/openai/codex,
+tag rust-v0.165.0, under the Apache License 2.0 (see LICENSE-OpenAI).
+The upstream source archive contains no root NOTICE file; this attribution
+was added by Agent Runtime. Modification: all models' tool_mode fields are
+set to direct; all other model metadata is retained.

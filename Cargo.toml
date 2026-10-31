@@ -1,0 +1,82 @@
+[workspace]
+# Cargo 1.90 treats explicit member directories as prefixes, overriding nested
+# exclusions. A flat glob keeps vendored path dependencies outside this workspace.
+members = ["crates/*"]
+exclude = [
+    "experiments/qq-lab/rust-client",
+    "crates/runtime-media/vendor",
+]
+resolver = "2"
+
+[package]
+license = "MIT"
+name = "agent-runtime"
+description = "Glimlink: a lightweight agent runtime for platform interaction and shared memory"
+repository = "https://github.com/HyacineFengJin/glimlink"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+publish = false
+build = "build.rs"
+
+[features]
+default = []
+# Explicit opt-in only after the user resumes personal-account testing.
+weixin-live = ["dep:platform-weixin"]
+agent-host-tests = ["runtime-engine/test-helper"]
+
+[[bin]]
+name = "agent-host-fixture"
+path = "crates/runtime-engine/src/bin/fake_server.rs"
+required-features = ["agent-host-tests"]
+
+[[bin]]
+name = "agent-antigravity-fixture"
+path = "tests/support/antigravity_fixture.rs"
+required-features = ["agent-host-tests"]
+
+[[bin]]
+name = "agent-runtime"
+path = "src/main.rs"
+
+[[bin]]
+name = "agent-login-fixture"
+path = "crates/runtime-engine/src/bin/login_fixture.rs"
+required-features = ["agent-host-tests"]
+
+[dependencies]
+runtime-core = { path = "crates/runtime-core" }
+runtime-control = { path = "crates/runtime-control" }
+runtime-content = { path = "crates/runtime-content" }
+platform-bilibili = { path = "crates/platform-bilibili" }
+platform-tieba = { path = "crates/platform-tieba" }
+platform-qq = { path = "crates/platform-qq" }
+platform-github = { path = "crates/platform-github" }
+platform-x = { path = "crates/platform-x" }
+platform-weixin = { path = "crates/platform-weixin", optional = true }
+runtime-media = { path = "crates/runtime-media" }
+runtime-speech = { path = "crates/runtime-speech" }
+runtime-engine = { path = "crates/runtime-engine" }
+runtime-jobs = { path = "crates/runtime-jobs" }
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22.1"
+qrcode = { version = "=0.14.1", default-features = false }
+image = { version = "=0.25.8", default-features = false, features = ["png"] }
+
+[profile.release]
+opt-level = "s"
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "abort"
+
+# Keep compile-only debug artifacts bounded; VPS limits apply to runtime tests.
+[profile.dev]
+debug = 0
+incremental = false
+
+[profile.test]
+debug = 0
+incremental = false

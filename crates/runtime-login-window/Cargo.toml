@@ -1,0 +1,22 @@
+[package]
+name = "runtime-login-window"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+license = "MIT"
+publish = false
+description = "Optional client-only login WebView using system WebKitGTK"
+
+[features]
+default = []
+native-webview = []
+
+[[bin]]
+name = "agent-login-window"
+path = "src/main.rs"
+required-features = ["native-webview"]
+
+[dependencies]
+runtime-control = { path = "../runtime-control" }
+serde_json = "1"
+libc = "0.2"
