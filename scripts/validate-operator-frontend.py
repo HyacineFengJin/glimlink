@@ -44,7 +44,7 @@ window.__TAURI__={event:{listen:async(name,callback)=>{window.__loginHandler=cal
     return {};
   }
   if(command==='worker_control'){window.__console.worker_online=args.start;window.__console.host=args.start?{phase:'waiting'}:{status:'stopped'};return {ok:true,running:args.start};}
-  if(command==='memory_snapshot'){if(window.__memoryFailure)throw new Error('synthetic sampling failure');return {available:true,partial:false,scope:'local_operator_process_tree',rss_bytes:20971520,pss_bytes:10485760,process_count:3,sampled_at_unix_ms:Date.now()};}
+  if(command==='memory_snapshot'){if(window.__memoryFailure)throw new Error('synthetic sampling failure');return {available:true,running:true,scope:'runtime_container',current_bytes:20971520,peak_bytes:33554432,limit_bytes:536870912,sampled_at_unix_ms:Date.now()};}
   if(command==='begin_login')return {login_id:'synthetic-'+(++window.__job)};
   if(command==='platform_capabilities')return {platform:args.platform,methods:[],reuse:true,paused:args.platform==='weixin'};
   if(command==='account_status')return {status:'signed_out',online_checked:false};
@@ -57,7 +57,7 @@ source = source.replace('<script src="app.js" defer></script>', '<script src="ap
 tests = args.tests.read_text().replace("textContent:JSON.stringify(results)}));", "textContent:JSON.stringify(results)}));fetch('/synthetic-result',{method:'POST',body:JSON.stringify(results)});")
 assert "fetch('/synthetic-result'" in tests
 routes = {'/' + nonce: (source.encode(), 'text/html; charset=utf-8'), '/test.js': (tests.encode(), 'application/javascript')}
-for name, mime in [('app.js', 'application/javascript'), ('console.js','application/javascript'),('locale.js','application/javascript'),('styles.css', 'text/css')]:
+for name, mime in [('app.js', 'application/javascript'), ('console.js','application/javascript'),('locale.js','application/javascript'),('selects.js','application/javascript'),('styles.css', 'text/css')]:
     routes['/' + name] = ((args.frontend / name).read_bytes(), mime)
 for asset in (args.frontend / 'brands').iterdir():
     if asset.suffix in {'.ico', '.png', '.jpg', '.svg'}:

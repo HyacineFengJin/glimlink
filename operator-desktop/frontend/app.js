@@ -43,6 +43,7 @@ let memoryTimer = null;
 let memoryInFlight = false;
 let memoryPaused = false;
 let memoryDisposed = false;
+let memoryGeneration = 0;
 const appearanceOptions = Object.freeze({
   theme: Object.freeze({ key: 'agent.operator.appearance.theme', values: Object.freeze(['iris', 'lagoon', 'sunset']), fallback: 'iris' }),
   density: Object.freeze({ key: 'agent.operator.appearance.density', values: Object.freeze(['comfortable', 'compact']), fallback: 'comfortable' }),
@@ -73,64 +74,58 @@ function restoreAppearance() {
     setAppearance(kind, value, false);
   }
 }
-function setPersonalizationOpen(open, focusToggle = false) {
-  $('#personalize-panel').hidden = !open;
-  $('#personalize-toggle').setAttribute('aria-expanded', String(open));
-  if (focusToggle) $('#personalize-toggle').focus();
-}
-
-function memoryMiB(bytes) { return (bytes / 1048576).toLocaleString('zh-CN', { maximumFractionDigits: 1 }); }
+function memoryMiB(bytes) { return (bytes / 1048576).toLocaleString(window.GlimlinkI18n?.language() || 'en', { maximumFractionDigits: 1 }); }
 function validBytes(value) { return Number.isSafeInteger(value) && value >= 0; }
+function memoryInterval() { return connection.mode === 'ssh' ? 5000 : 3000; }
 function clearMemory(message) {
-  $('#memory-value').textContent = '—';
-  $('#memory-rss').textContent = '—';
-  $('#memory-processes').textContent = '—';
+  for (const id of ['memory-value','memory-peak','memory-limit','memory-time']) $('#'+id).textContent = '—';
   $('#memory-metric').textContent = '无可用数据';
   $('#memory-message').textContent = message;
-  $('#memory-time').textContent = '—';
   $('#memory-time').removeAttribute('datetime');
   $('#memory-trend').setAttribute('points', '');
   memorySamples.length = 0; memoryBasis = null;
 }
 function renderMemory(sample) {
-  if (sample?.available !== true || sample.scope !== 'local_operator_process_tree' || !validBytes(sample.rss_bytes) || !Number.isSafeInteger(sample.process_count) || sample.process_count < 1 || !Number.isSafeInteger(sample.sampled_at_unix_ms) || !Number.isFinite(new Date(sample.sampled_at_unix_ms).getTime())) {
-    clearMemory('当前系统无法提供内存数据。');
-    $('#memory-state').textContent = '暂不可用';
-    return;
+  const container = sample?.scope === 'runtime_container';
+  const local = sample?.scope === 'local_runtime_process_tree';
+  $('#memory-source').textContent = container ? 'Runtime · VPS 容器' : 'Runtime · 本机';
+  $('#memory-scope').textContent = container ? '包含 Runtime 容器与原生引擎，不含操控端或其他服务。' : '包含 Runtime 及其原生引擎子进程，不含操控端。';
+  const stopped = sample?.running === false;
+  const pss = local && validBytes(sample.pss_bytes);
+  const value = stopped ? 0 : container ? sample.current_bytes : pss ? sample.pss_bytes : sample?.rss_bytes;
+  if (!sample?.available || (!container && !local) || !validBytes(value)) {
+    clearMemory('当前连接的 Runtime 内存暂不可用。'); $('#memory-state').textContent = '暂不可用'; return;
   }
-  const hasPss = validBytes(sample.pss_bytes);
-  const basis = hasPss ? 'PSS' : 'RSS';
+  const basis = [connection.mode,connection.destination,connection.state,container?'cgroup':pss?'pss':'rss',stopped].join('/');
   if (memoryBasis !== basis) { memorySamples.length = 0; memoryBasis = basis; }
-  const value = hasPss ? sample.pss_bytes : sample.rss_bytes;
-  memorySamples.push(value);
-  if (memorySamples.length > 24) memorySamples.shift();
-  $('#memory-metric').textContent = hasPss ? 'PSS · 分摊共享内存' : sample.partial ? 'RSS · 已读进程' : 'RSS · 驻留内存';
+  memorySamples.push(value); if (memorySamples.length > 24) memorySamples.shift();
+  $('#memory-metric').textContent = stopped ? '后台未运行' : container ? '容器内存 · 含缓存' : pss ? 'PSS · 分摊共享内存' : 'RSS · 驻留内存';
   $('#memory-value').textContent = memoryMiB(value);
-  $('#memory-rss').textContent = `${memoryMiB(sample.rss_bytes)} MiB`;
-  $('#memory-processes').textContent = String(sample.process_count);
-  $('#memory-message').textContent = sample.partial ? '部分进程未能读取，统计可能不完整。RSS 会重复计入共享页。' : 'RSS 会重复计入共享页；PSS 按比例分摊。';
-  $('#memory-state').textContent = memoryPaused ? '已暂停' : document.hidden ? '后台暂停' : '每 3 秒采样';
+  $('#memory-peak').textContent = validBytes(sample.peak_bytes) ? `${memoryMiB(sample.peak_bytes)} MiB` : '—';
+  $('#memory-limit').textContent = validBytes(sample.limit_bytes) && sample.limit_bytes>0 ? `${memoryMiB(sample.limit_bytes)} MiB` : '—';
+  $('#memory-message').textContent = stopped ? 'Runtime 后台已停止。' : container ? '直接读取容器内存，峰值按本次容器运行累计。' : sample.partial ? '部分进程未能读取，统计可能不完整。RSS 会重复计入共享页。' : 'RSS 会重复计入共享页；PSS 按比例分摊。';
+  $('#memory-state').textContent = memoryPaused ? '已暂停' : document.hidden ? '后台暂停' : connection.mode==='ssh' ? '每 5 秒采样' : '每 3 秒采样';
   const when = new Date(sample.sampled_at_unix_ms);
   $('#memory-time').textContent = when.toLocaleTimeString(window.GlimlinkI18n?.language() || 'en', { hour12: false });
   $('#memory-time').dateTime = when.toISOString();
-  const ceiling = Math.max(1048576, ...memorySamples) * 1.15;
-  const points = memorySamples.map((bytes, index) => `${memorySamples.length === 1 ? 0 : index / (memorySamples.length - 1) * 100},${37 - bytes / ceiling * 32}`);
-  if (points.length === 1) points.push(`100,${37 - value / ceiling * 32}`);
-  $('#memory-trend').setAttribute('points', points.join(' '));
+  const ceiling = Math.max(1048576,...memorySamples) * 1.15;
+  const points = memorySamples.map((bytes,index) => `${memorySamples.length===1?0:index/(memorySamples.length-1)*100},${37-bytes/ceiling*32}`);
+  if(points.length===1)points.push(`100,${37-value/ceiling*32}`);
+  $('#memory-trend').setAttribute('points',points.join(' '));
 }
 function scheduleMemory() {
   clearTimeout(memoryTimer); memoryTimer = null;
-  if (bridge && !memoryPaused && !memoryDisposed && !document.hidden && window.GlimlinkPage === 'settings') memoryTimer = setTimeout(sampleMemory, 3000);
+  if(bridge && !connectionDirty && !memoryPaused && !memoryDisposed && !document.hidden && window.GlimlinkPage==='settings') memoryTimer=setTimeout(sampleMemory,memoryInterval());
 }
 async function sampleMemory() {
-  if (!bridge || memoryInFlight || memoryPaused || memoryDisposed || document.hidden || window.GlimlinkPage !== 'settings') return;
-  memoryInFlight = true;
+  if(!bridge || connectionDirty || active || memoryInFlight || memoryPaused || memoryDisposed || document.hidden || window.GlimlinkPage!=='settings') {scheduleMemory();return;}
+  memoryInFlight=true; const generation=memoryGeneration; const target={...connection};
   try {
-    const sample = await invoke('memory_snapshot', {});
-    if (!memoryDisposed) renderMemory(sample);
-  } catch (_) {
-    if (!memoryDisposed) { clearMemory('内存采样未完成，稍后自动重试。'); $('#memory-state').textContent = memoryPaused ? '已暂停' : '采样失败'; }
-  } finally { memoryInFlight = false; scheduleMemory(); }
+    const sample=await invoke('memory_snapshot',{connection:target});
+    if(!memoryDisposed && generation===memoryGeneration && !connectionDirty)renderMemory(sample);
+  } catch(_) {
+    if(!memoryDisposed && generation===memoryGeneration) {clearMemory('内存采样未完成，稍后自动重试。');$('#memory-state').textContent=memoryPaused?'已暂停':'采样失败';}
+  } finally {memoryInFlight=false;scheduleMemory();}
 }
 function toggleMemory() {
   memoryPaused = !memoryPaused;
@@ -541,20 +536,9 @@ async function applyConnection(event) {
 }
 
 restoreAppearance();
-$('#personalize-toggle').addEventListener('click', () => setPersonalizationOpen($('#personalize-panel').hidden));
 for (const kind of Object.keys(appearanceOptions)) {
   document.querySelectorAll(`[data-${kind}-choice]`).forEach((button) => button.addEventListener('click', () => setAppearance(kind, button.dataset[`${kind}Choice`])));
 }
-document.addEventListener('click', (event) => {
-  if (!event.target.closest('.personalization')) setPersonalizationOpen(false);
-});
-document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && !$('#personalize-panel').hidden) {
-    event.preventDefault();
-    setPersonalizationOpen(false, true);
-  }
-});
-
 $('#connection-form').addEventListener('submit', applyConnection);
 $('#connection-form').addEventListener('input', markConnectionDirty);
 document.querySelectorAll('.segment').forEach((button) => button.addEventListener('click', () => setMode(button.dataset.mode)));
@@ -576,6 +560,7 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pagehide', () => { memoryDisposed = true; clearTimeout(memoryTimer); memoryTimer = null; });
 window.addEventListener('operator:view',()=>{clearTimeout(memoryTimer);memoryTimer=null;if(window.GlimlinkPage==='settings')sampleMemory();});
 window.addEventListener('operator:language',render);
+window.addEventListener('operator:connection',()=>{memoryGeneration++;clearMemory('等待当前 Runtime 的实际采样。');sampleMemory();});
 window.addEventListener('pageshow', () => { memoryDisposed = false; sampleMemory(); });
 
 async function initialize() {
@@ -585,7 +570,7 @@ async function initialize() {
     badge.replaceChildren(element('i'), document.createTextNode('界面预览'));
     $('#connection-feedback').textContent = '普通浏览器预览不会连接 Runtime 或发起账号登录。';
     $('#memory-toggle').disabled = true;
-    clearMemory('界面预览没有操控端进程，无法测量。');
+    clearMemory('界面预览未连接 Runtime，无法测量。');
     $('#memory-state').textContent = '预览不可用';
   } else {
     try {

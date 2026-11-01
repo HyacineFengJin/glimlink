@@ -194,6 +194,29 @@ pub async fn control_request(
     .map_err(|_| ApiError::transport())?
 }
 #[tauri::command]
+pub async fn memory_snapshot(
+    connection: Connection,
+    sessions: State<'_, Sessions>,
+) -> ApiResult<Value> {
+    let shared = sessions.shared.clone();
+    let options = connection.options(Platform::Runtime, Action::Status, "auto")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let _gate = shared
+            .inspection
+            .lock()
+            .map_err(|_| ApiError::transport())?;
+        idle(&shared)?;
+        let result = if options.ssh.is_some() {
+            runtime_operator::console::worker_memory(&options)
+        } else {
+            crate::memory::sample_runtime(&options)
+        };
+        result.map_err(|code| ApiError::new(&code, "无法读取当前连接的 Runtime 内存。"))
+    })
+    .await
+    .map_err(|_| ApiError::transport())?
+}
+#[tauri::command]
 pub async fn worker_control(
     connection: Connection,
     start: bool,

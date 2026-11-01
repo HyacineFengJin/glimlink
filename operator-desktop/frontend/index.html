@@ -10,6 +10,7 @@
   <script src="locale.js" defer></script>
   <script src="app.js" defer></script>
   <script src="console.js" defer></script>
+  <script src="selects.js" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -28,20 +29,6 @@
       <header class="page-header">
         <div class="header-copy"><div class="eyebrow">GLIMLINK <span class="eyebrow-dot"></span> YOUR OPERATOR</div><h1><span id="page-name">连接</span><svg class="headline-flower" viewBox="0 0 64 64" aria-hidden="true"><path d="M32 4c8-10 16 0 12 10 11-4 20 5 10 12 12 5 7 17-5 17 4 11-9 18-17 8-8 10-21 3-17-8-12 0-17-12-5-17C0 19 9 10 20 14 16 4 24-6 32 4Z"/><circle cx="32" cy="29" r="7"/></svg></h1><p id="page-description">账号与 Runtime，各自保持连接。</p></div>
         <div class="header-actions">
-          <label class="language-picker"><span class="sr-only">界面语言</span><select id="language-select" aria-label="界面语言"><option value="zh-CN">简体中文</option><option value="en">English</option></select></label>
-          <div class="personalization">
-            <button class="personalize-button" id="personalize-toggle" type="button" aria-expanded="false" aria-controls="personalize-panel"><span class="palette-dots" aria-hidden="true"><i></i><i></i><i></i></span>我的配色<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></button>
-            <section class="personalize-panel" id="personalize-panel" aria-labelledby="personalize-title" hidden>
-              <div class="personalize-heading"><div><span class="eyebrow">MAKE IT YOURS</span><h2 id="personalize-title">一点你的个性</h2></div><span aria-hidden="true">✳</span></div>
-              <div class="theme-options" role="group" aria-label="配色主题">
-                <button class="theme-choice" data-theme-choice="iris" type="button" aria-pressed="true"><span class="theme-preview preview-iris" aria-hidden="true"><i></i><i></i><i></i></span><strong>鸢尾紫</strong><span>灵感上线</span><b class="choice-check" aria-hidden="true">✓</b></button>
-                <button class="theme-choice" data-theme-choice="lagoon" type="button" aria-pressed="false"><span class="theme-preview preview-lagoon" aria-hidden="true"><i></i><i></i><i></i></span><strong>深海青</strong><span>清爽出发</span><b class="choice-check" aria-hidden="true">✓</b></button>
-                <button class="theme-choice" data-theme-choice="sunset" type="button" aria-pressed="false"><span class="theme-preview preview-sunset" aria-hidden="true"><i></i><i></i><i></i></span><strong>落日橙</strong><span>暖一点点</span><b class="choice-check" aria-hidden="true">✓</b></button>
-              </div>
-              <div class="density-setting"><span>界面密度</span><div role="group" aria-label="界面密度"><button class="density-choice" data-density-choice="comfortable" type="button" aria-pressed="true">舒展</button><button class="density-choice" data-density-choice="compact" type="button" aria-pressed="false">紧凑</button></div></div>
-              <p>仅保存配色与密度，不保存账号或连接信息。</p>
-            </section>
-          </div>
           <div class="channel-actions"><span class="bridge-badge" id="bridge-badge"><i></i>检查操控通道</span><button class="icon-button" id="refresh-all" title="检查所有账号" aria-label="检查所有账号"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 8a8 8 0 1 0 .4 7M19 3v5h-5"/></svg></button></div>
         </div>
       </header>
@@ -86,12 +73,12 @@
           </section>
 
           <section class="memory-card surface-card" aria-labelledby="memory-title">
-            <div class="memory-heading"><div><h2 id="memory-title">内存监视</h2><p>操控端 · 含本机子进程</p></div><button id="memory-toggle" class="memory-toggle" type="button" aria-pressed="false" aria-label="暂停内存采样">暂停</button></div>
+            <div class="memory-heading"><div><h2 id="memory-title">内存监视</h2><p id="memory-source">Runtime</p></div><button id="memory-toggle" class="memory-toggle" type="button" aria-pressed="false" aria-label="暂停内存采样">暂停</button></div>
             <div class="memory-values"><div><span id="memory-metric" class="memory-metric">等待实际采样</span><strong id="memory-value">—</strong><span class="memory-unit">MiB</span></div><svg class="memory-chart" viewBox="0 0 100 40" role="img" aria-label="最近的内存采样趋势"><path d="M0 37h100"/><polyline id="memory-trend" points=""/></svg></div>
-            <div class="memory-details"><span>RSS <b id="memory-rss">—</b></span><span><b id="memory-processes">—</b> 个进程</span></div>
+            <div class="memory-details"><span>峰值 <b id="memory-peak">—</b></span><span>上限 <b id="memory-limit">—</b></span></div>
             <p class="memory-message" id="memory-message" role="status">尚无测量数据。</p>
             <div class="memory-footer"><span><i></i><span id="memory-state">等待采样</span></span><time id="memory-time">—</time></div>
-            <p class="memory-scope">仅统计当前操控端，不代表远端 Runtime。</p>
+            <p class="memory-scope" id="memory-scope">统计当前连接的 Runtime，包含原生引擎，不含操控端。</p>
           </section>
 
           <section class="activity-card surface-card" id="activity-card" aria-labelledby="activity-title"><div class="activity-heading"><h2 id="activity-title">刚刚发生</h2><span class="live-mark">本次会话</span></div><ol id="activity-list"><li class="activity-empty">还没有操作。准备好后，检查一个账号。</li></ol></section>
@@ -100,7 +87,7 @@
       </section>
 
       <section class="page-view" data-page="control" hidden>
-        <div class="control-toolbar surface-card"><div><span class="small-label">Runtime 工作进程</span><strong id="worker-state">尚未读取</strong><p id="worker-detail">读取后显示后台状态。</p></div><div class="toolbar-actions"><button id="worker-start" class="filled-button" type="button">启动后台</button><button id="worker-stop" class="small-button" type="button">停止后台</button><button id="control-refresh" class="small-button" type="button">刷新</button></div></div>
+        <div class="control-toolbar surface-card"><div class="worker-summary"><div class="worker-emblem" aria-hidden="true"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="34"/><path d="M40 14c8-7 16 1 12 11 11-3 19 6 10 13 10 7 3 18-8 15 1 12-12 17-17 6-8 9-19 2-15-9-12 0-16-13-5-18-7-8 1-18 11-13 0-11 10-14 12-5Z"/><circle class="emblem-center" cx="39" cy="38" r="7"/></svg></div><div class="worker-copy"><span class="small-label">Runtime 工作进程</span><strong id="worker-state">尚未读取</strong><p id="worker-detail">读取后显示后台状态。</p></div></div><div class="toolbar-actions"><button id="worker-start" class="filled-button" type="button">启动后台</button><button id="worker-stop" class="small-button" type="button">停止后台</button><button id="control-refresh" class="small-button" type="button">刷新</button></div></div>
         <p id="control-feedback" class="console-feedback" role="status"></p>
         <div class="control-layout">
           <aside class="conversation-panel surface-card"><div class="section-heading"><h2>会话</h2><button id="conversation-new" class="small-button" type="button">新会话</button></div><div id="conversation-list" class="conversation-list"></div></aside>
@@ -114,7 +101,7 @@
       </section>
 
       <section class="page-view" data-page="settings" hidden>
-        <div class="settings-grid"><section class="surface-card"><span class="section-chip">MAKE IT YOURS</span><h2>外观与语言</h2><label class="field"><span>界面语言</span><select id="settings-language"><option value="zh-CN">简体中文</option><option value="en">English</option></select></label><h3>配色</h3><div class="theme-options"><button class="theme-choice" data-theme-choice="iris" type="button"><span class="theme-preview preview-iris"><i></i><i></i><i></i></span><strong>鸢尾紫</strong></button><button class="theme-choice" data-theme-choice="lagoon" type="button"><span class="theme-preview preview-lagoon"><i></i><i></i><i></i></span><strong>深海青</strong></button><button class="theme-choice" data-theme-choice="sunset" type="button"><span class="theme-preview preview-sunset"><i></i><i></i><i></i></span><strong>落日橙</strong></button></div><h3>界面密度</h3><div class="segmented-control"><button class="density-choice" data-density-choice="comfortable" type="button">舒展</button><button class="density-choice" data-density-choice="compact" type="button">紧凑</button></div><p class="panel-help">只保存语言、配色和密度，账号凭据由 Runtime 保管。</p></section><div id="settings-memory-host"></div><div id="settings-log-host"></div></div>
+        <div class="settings-grid"><section class="surface-card"><span class="section-chip">MAKE IT YOURS</span><h2>外观与语言</h2><div class="language-setting"><span class="field-title">界面语言</span><div class="language-options" role="group" aria-label="界面语言"><button type="button" data-language-choice="zh-CN" aria-pressed="true" translate="no"><span class="language-symbol" aria-hidden="true">文</span><span>简体中文</span><span class="language-check" aria-hidden="true">✓</span></button><button type="button" data-language-choice="en" aria-pressed="false" translate="no"><span class="language-symbol" aria-hidden="true">A</span><span>English</span><span class="language-check" aria-hidden="true">✓</span></button></div></div><h3>配色</h3><div class="theme-options"><button class="theme-choice" data-theme-choice="iris" type="button"><span class="theme-preview preview-iris"><i></i><i></i><i></i></span><strong>鸢尾紫</strong></button><button class="theme-choice" data-theme-choice="lagoon" type="button"><span class="theme-preview preview-lagoon"><i></i><i></i><i></i></span><strong>深海青</strong></button><button class="theme-choice" data-theme-choice="sunset" type="button"><span class="theme-preview preview-sunset"><i></i><i></i><i></i></span><strong>落日橙</strong></button></div><h3>界面密度</h3><div class="segmented-control"><button class="density-choice" data-density-choice="comfortable" type="button">舒展</button><button class="density-choice" data-density-choice="compact" type="button">紧凑</button></div><p class="panel-help">只保存语言、配色和密度，账号凭据由 Runtime 保管。</p></section><div id="settings-memory-host"></div><div id="settings-log-host"></div></div>
       </section>
       <footer class="page-footer"><span><i></i> UI 与 Runtime 分离 · 原创部分 MIT</span><span>验证窗口按需打开，用完即关闭</span></footer>
     </main>

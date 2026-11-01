@@ -79,6 +79,11 @@ pub fn worker_status(options: &Options) -> Result<Value> {
     configured.ssh_batch = true;
     worker_reply(crate::launch_worker_status(&configured)?)
 }
+pub fn worker_memory(options: &Options) -> Result<Value> {
+    let mut configured = options.clone();
+    configured.ssh_batch = true;
+    worker_reply(crate::launch_worker_memory(&configured)?)
+}
 fn worker_reply(mut command: std::process::Command) -> Result<Value> {
     let mut child = Running(command.spawn().map_err(|_| "control_unavailable")?);
     drop(child.0.stdin.take());

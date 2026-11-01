@@ -17,12 +17,15 @@ The interface groups **Agent engines**, **social platforms**, and **applications
 and collaboration**. Codex and Antigravity are engines. GitHub has its own
 application section; X belongs to social platforms. The unimplemented Gmail
 adapter has no fake login card.
-The memory card reports actual local operator-tree samples every three seconds,
-including WebKit and active local children. It prefers PSS when the complete
-tree is readable, labels partial/RSS fallback, and supports pausing. Hidden
-documents stop scheduling. At most 24 samples stay in memory; none persist.
-SSH selection does not turn these measurements into remote Runtime statistics.
-Deployment design budgets remain in documentation, outside the product UI.
+The Settings memory card measures the connected Runtime, not the operator.
+Remote Docker deployments read the fixed worker's cgroup current/peak/limit over
+SSH every five seconds without a resident monitor or an extra container. Local
+native deployments sample the verified Runtime PID and native-engine children
+(RSS/PSS) every three seconds. Stopped and unavailable are distinct states;
+failures never fall back to operator memory. Hidden pages stop scheduling, and
+only 24 samples stay in memory. Language/theme controls live only in Settings.
+Select menus use small keyboard-accessible rounded lists rather than native
+WebKit/GTK popups. Niri uses an undecorated main window.
 
 ## Build
 
@@ -114,7 +117,7 @@ operator and paste a complete Cookie request header once; separate `auth_token`
 and `ct0` fields remain available. The external browser has no automatic callback
 or Cookie capture. The operator does not open its profile files, request an
 extension, or send credentials through chat. A reused external browser process
-may be outside the operator process tree and its memory monitor.
+runs on the operator computer and is excluded from the Runtime memory card.
 
 The optional built-in X window uses the existing system WebView in a separate
 incognito context. It accepts top-level navigation only to exact HTTPS `x.com`,

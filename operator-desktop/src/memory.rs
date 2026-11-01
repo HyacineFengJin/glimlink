@@ -1,19 +1,9 @@
 // SPDX-License-Identifier: MIT
-//! Client-local, on-demand process-tree accounting. No Runtime RPC or account
-//! state is consulted. Linux shared RSS pages are counted once per process.
+//! On-demand accounting of the selected local Runtime and its native children.
+//! Remote Docker accounting uses the fixed host transport instead.
 use serde::Serialize;
-use std::{
-    sync::atomic::{AtomicBool, Ordering},
-    time::{SystemTime, UNIX_EPOCH},
-};
-
-static SAMPLING: AtomicBool = AtomicBool::new(false);
-struct Sampling;
-impl Drop for Sampling {
-    fn drop(&mut self) {
-        SAMPLING.store(false, Ordering::Release);
-    }
-}
+use serde_json::{Value, json};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Serialize)]
 pub struct MemorySnapshot {
@@ -44,6 +34,7 @@ fn timestamp() -> u64 {
         .unwrap_or(0)
 }
 
+#[cfg(not(target_os = "linux"))]
 impl MemorySnapshot {
     fn unavailable(code: &'static str, message: &'static str) -> Self {
         Self {
@@ -53,42 +44,70 @@ impl MemorySnapshot {
             process_count: 0,
             rss_bytes: None,
             pss_bytes: None,
-            scope: "local_operator_process_tree",
+            scope: "local_runtime_process_tree",
             rss_shared_pages_counted_multiple_times: true,
             error: Some(MemoryError { code, message }),
         }
     }
 }
 
-#[tauri::command]
-pub async fn memory_snapshot() -> MemorySnapshot {
-    // A hidden window or repeated invocation cannot accumulate sampling jobs.
-    if SAMPLING
-        .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
-        .is_err()
-    {
-        return MemorySnapshot::unavailable("sampling_busy", "上一次本机内存采样尚未结束。");
+pub fn sample_runtime(options: &runtime_operator::Options) -> Result<Value, String> {
+    let snapshot =
+        runtime_operator::console::request(options, runtime_control::console::Command::Snapshot)?;
+    let stopped = || json!({"available":true,"running":false,"scope":"local_runtime_process_tree","current_bytes":0,"peak_bytes":null,"limit_bytes":null,"sampled_at_unix_ms":timestamp()});
+    if snapshot["worker_online"] != true {
+        return Ok(stopped());
     }
-    let sampling = Sampling;
-    tauri::async_runtime::spawn_blocking(move || {
-        let _sampling = sampling;
-        sample()
-    })
-    .await
-    .unwrap_or_else(|_| MemorySnapshot::unavailable("sampling_failed", "本机内存采样暂不可用。"))
-}
-
-#[cfg(not(target_os = "linux"))]
-fn sample() -> MemorySnapshot {
-    MemorySnapshot::unavailable(
-        "unsupported_platform",
-        "当前系统尚未支持本机操控端进程树内存统计。",
-    )
-}
-
-#[cfg(target_os = "linux")]
-fn sample() -> MemorySnapshot {
-    linux::sample(std::process::id())
+    let pid = snapshot["host"]["pid"]
+        .as_u64()
+        .and_then(|p| u32::try_from(p).ok())
+        .filter(|p| *p > 1)
+        .ok_or("runtime_pid_unavailable")?;
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        let args =
+            std::fs::read(format!("/proc/{pid}/cmdline")).map_err(|_| "runtime_pid_unavailable")?;
+        if args.len() > 65536 {
+            return Err("runtime_pid_invalid".into());
+        }
+        let words: Vec<_> = args.split(|b| *b == 0).collect();
+        if !words
+            .windows(2)
+            .any(|w| w[0] == b"--state" && w[1] == options.state.as_os_str().as_bytes())
+            || !words.windows(2).any(|w| w[0] == b"agent" && w[1] == b"run")
+        {
+            return Err("runtime_pid_mismatch".into());
+        }
+        let before =
+            std::fs::read(format!("/proc/{pid}/stat")).map_err(|_| "runtime_pid_unavailable")?;
+        let sample = linux::sample(pid);
+        let after =
+            std::fs::read(format!("/proc/{pid}/stat")).map_err(|_| "runtime_pid_unavailable")?;
+        // The start time follows the final ')' even when a process name has spaces.
+        let start = |b: &[u8]| {
+            b.iter()
+                .rposition(|v| *v == b')')
+                .and_then(|i| b.get(i + 2..))
+                .and_then(|v| v.split(|v| v.is_ascii_whitespace()).nth(19))
+                .map(|v| v.to_vec())
+        };
+        if start(&before).is_none() || start(&before) != start(&after) {
+            return Err("runtime_pid_changed".into());
+        }
+        let mut value = serde_json::to_value(sample).map_err(|_| "memory_unavailable")?;
+        value["running"] = json!(true);
+        Ok(value)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = pid;
+        Ok(serde_json::to_value(MemorySnapshot::unavailable(
+            "unsupported_platform",
+            "Runtime 内存采样暂不可用。",
+        ))
+        .map_err(|_| "memory_unavailable")?)
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -281,12 +300,12 @@ mod linux {
             process_count: count,
             rss_bytes: (count > 0).then_some(rss),
             pss_bytes: if partial { None } else { pss },
-            scope: "local_operator_process_tree",
+            scope: "local_runtime_process_tree",
             rss_shared_pages_counted_multiple_times: true,
             error: if count == 0 {
                 Some(MemoryError {
                     code: "memory_unavailable",
-                    message: "暂时无法读取本机操控端的进程内存。",
+                    message: "暂时无法读取Runtime的进程内存。",
                 })
             } else if partial {
                 Some(MemoryError {
@@ -381,20 +400,20 @@ mod linux {
         }
 
         #[test]
-        fn async_tauri_bridge_samples_children_created_by_background_threads() {
+        fn runtime_tree_samples_children_created_by_background_threads() {
             let child = BackgroundChild::new();
             let tree = process_tree(std::process::id(), Instant::now() + Duration::from_secs(1));
             assert!(
                 tree.pids.contains(&child.pid),
                 "thread-created child was omitted"
             );
-            let snapshot = tauri::async_runtime::block_on(super::super::memory_snapshot());
+            let snapshot = sample(std::process::id());
             assert!(snapshot.available);
             assert!(snapshot.process_count >= 2);
             assert!(snapshot.rss_bytes.unwrap() > 0);
             assert!(snapshot.sampled_at_unix_ms > 0);
             let json = serde_json::to_value(&snapshot).unwrap();
-            assert_eq!(json["scope"], "local_operator_process_tree");
+            assert_eq!(json["scope"], "local_runtime_process_tree");
             assert!(json.get("pid").is_none() && json.get("path").is_none());
             assert_eq!(json["rss_shared_pages_counted_multiple_times"], true);
             assert!(json["pss_bytes"].is_null() || json["pss_bytes"].as_u64().unwrap() > 0);

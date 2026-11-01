@@ -172,6 +172,9 @@ pub fn launch_worker(options: &Options, start: bool) -> Result<Command> {
 pub fn launch_worker_status(options: &Options) -> Result<Command> {
     launch_endpoint(options, "worker-status")
 }
+pub fn launch_worker_memory(options: &Options) -> Result<Command> {
+    launch_endpoint(options, "worker-memory")
+}
 fn launch_endpoint(options: &Options, endpoint: &'static str) -> Result<Command> {
     let executable = options.runtime.clone().unwrap_or_else(|| {
         if options.ssh.is_some() {

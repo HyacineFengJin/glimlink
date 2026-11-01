@@ -3,6 +3,17 @@
 // marked translate=no and are never rewritten or persisted by this module.
 (() => {
   const en = {
+    '简体中文':'Simplified Chinese',
+    '峰值':'Peak','上限':'Limit','Runtime · VPS 容器':'Runtime · VPS container','Runtime · 本机':'Runtime · local',
+    '统计当前连接的 Runtime，包含原生引擎，不含操控端。':'Measures the connected Runtime and its native engines, excluding this operator.',
+    '包含 Runtime 容器与原生引擎，不含操控端或其他服务。':'Includes the Runtime container and native engines, excluding this operator and other services.',
+    '包含 Runtime 及其原生引擎子进程，不含操控端。':'Includes Runtime and its native engine children, excluding this operator.',
+    '当前连接的 Runtime 内存暂不可用。':'Memory data for the connected Runtime is unavailable.',
+    '容器内存 · 含缓存':'Container memory · including cache','Runtime 后台已停止。':'The Runtime worker is stopped.',
+    '直接读取容器内存，峰值按本次容器运行累计。':'Read directly from the container. Peak is recorded for this container run.',
+    '每 5 秒采样':'Sampled every 5 seconds','等待当前 Runtime 的实际采样。':'Waiting for an actual sample from the current Runtime.',
+    '界面预览未连接 Runtime，无法测量。':'This preview is not connected to Runtime; memory cannot be measured.',
+
     '已保存账号，平台暂未提供名称':'Account saved · name unavailable',
     'Agent 设置':'Agent settings','完成':'Done',
     '未核验账号':'Account not checked',
@@ -10,7 +21,7 @@
     'RSS · 已读进程':'RSS · readable processes','RSS · 驻留内存':'RSS · resident memory','Token 已保存':'Token saved','一次性授权码':'One-time authorization code','仅通过私有控制通道交给 Runtime，不进入 AI 对话、活动记录或本页持久存储。提交后立即清空。':'Sent only over the private control channel, never to AI dialogue, activity logs, or browser storage. Cleared after submission.','会话已保存':'Session saved','可跳转系统浏览器登录，也可使用内置窗口。已有登录可手动复制会话导入；不会自动读取外部浏览器。':'Sign in with your system browser or the built-in window. Existing sessions can be imported manually; the external browser is never read automatically.','在 X 窗口内正常登录，完成后自动交给 Runtime 核验。':'Sign in normally in the X window. Runtime verifies the resulting session.','在系统浏览器登录后回到这里，一次粘贴 Cookie 请求头。不会自动读取外部浏览器，也没有自动回调。':'Sign in in your browser, then return to paste the Cookie header. There is no automatic external-browser access or callback.','完成订阅授权':'Complete subscription authorization','密码':'Password','导入 X 网页会话':'Import X web session','导入已有登录态':'Import existing sign-in','当前系统无法提供内存数据。':'Memory measurements are unavailable on this system.','文件只从操控端读取。请使用权限 0600 的私有普通文件。':'Files are read only on the operator computer. Use a private regular file with mode 0600.','无可用数据':'No data available','暂不可用':'Unavailable','未检查':'Not checked','本机私密文件路径':'Private local file path','核心没有返回有效的登录会话标识。':'Runtime did not return a valid sign-in session ID.','正在打开专用登录窗口…':'Opening a dedicated sign-in window…','浏览器 Cookie':'Browser cookies','访问 Token':'Access token','请填写 auth_token 与 ct0 两项 Cookie。':'Enter both auth_token and ct0.','请粘贴完整 Cookie 请求头，或改为分别填写。':'Paste the complete Cookie header or switch to separate fields.','请输入有效的 QQ 账号。':'Enter a valid QQ account number.','输入 QQ 登录信息':'Enter QQ sign-in details','这个输入类型尚未支持，请取消本次登录。':'This input type is unsupported. Cancel this sign-in.','连接 GitHub 账号':'Connect a GitHub account','通过当前私有控制通道提交，不进入 AI 上下文。':'Submit through the current private control channel, outside AI context.','预览模式不执行真实账号操作。':'Preview mode does not perform real account actions.',
     '上次读取的账号名称，核验后显示当前登录状态。':'Previously read account name. Verify to check the current sign-in state.','账号名称来自已连接的平台。':'Account name returned by the connected platform.',
     '连接':'Connections','调控':'Control','指令':'Commands','设置':'Settings','调控与会话':'Control and conversations','调控 · 会话':'Control · Conversations',
-    '账号与 Runtime，各自保持连接。':'Your accounts and Runtime, connected.','和 AI 对话，选择引擎，调整它的节奏。':'Talk to your AI, choose its engine, and set its pace.','把管理权交给明确获准的会话。':'Manage Runtime from explicitly authorized conversations.','外观、语言与这台操控端的状态。':'Appearance, language, and this operator’s status.',
+    '账号与 Runtime，各自保持连接。':'Your accounts and Runtime, connected.','和 AI 对话，选择引擎，调整它的节奏。':'Talk to your AI, choose its engine, and set its pace.','把管理权交给明确获准的会话。':'Manage Runtime from explicitly authorized conversations.','外观、语言与 Runtime 的状态。':'Appearance, language, and Runtime status.',
     '界面语言':'Language','本机 UI':'Local UI','本机':'Local','SSH 远端':'Remote SSH','SSH 目标':'SSH destination','用户@服务器 或 SSH 别名':'user@server or SSH alias','user@my-vps 或 SSH 别名':'user@my-vps or SSH alias',
     '我的配色':'My palette','一点你的个性':'Make it yours','鸢尾紫':'Iris','深海青':'Lagoon','落日橙':'Sunset','灵感上线':'A little inspiration','清爽出发':'A fresh start','暖一点点':'A little warmer','界面密度':'Density','舒展':'Comfortable','紧凑':'Compact','配色':'Colors','配色主题':'Color theme',
     '仅保存配色与密度，不保存账号或连接信息。':'Only appearance preferences are saved here, never accounts or connection details.','界面预览':'UI preview','当前没有连接 Tauri 后端，真实账号操作已禁用。':'No native bridge is connected. Account actions are disabled.',
@@ -60,12 +71,12 @@
       for (const key of ['title', 'placeholder', 'aria-label']) if (n.hasAttribute(key)) { const value = n.getAttribute(key); const old = saved[key]; const source = old && value === old.last ? old.source : value; const next = text(source); saved[key] = { source, last: next }; if (value !== next) n.setAttribute(key, next); }
     });
     document.documentElement.lang = language;
-    for (const id of ['language-select', 'settings-language']) { const n = document.getElementById(id); if (n) n.value = language; }
+    document.querySelectorAll('[data-language-choice]').forEach(n => n.setAttribute('aria-pressed', String(n.dataset.languageChoice === language)));
   }
   function set(value) { if (!['en', 'zh-CN'].includes(value)) return; language = value; try { localStorage.setItem('glimlink.operator.language', language); } catch (_) {} localize(); window.dispatchEvent(new Event('operator:language')); }
   window.GlimlinkI18n = { text, language: () => language, set, refresh: localize };
   let queued = false;
   const observer = new MutationObserver(() => { if (queued) return; queued = true; queueMicrotask(() => { queued = false; localize(); }); });
   localize(); observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['title', 'placeholder', 'aria-label'] });
-  for (const id of ['language-select', 'settings-language']) document.getElementById(id)?.addEventListener('change', (e) => set(e.target.value));
+  document.querySelectorAll('[data-language-choice]').forEach(n => n.addEventListener('click', () => set(n.dataset.languageChoice)));
 })();

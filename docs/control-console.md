@@ -4,6 +4,12 @@ The optional operator has four independent pages: **Connections**, **Control
 (conversations)**, **Commands**, and **Settings**, in English or Simplified
 Chinese. Only language and fixed appearance preferences persist in browser
 storage. Conversations and cached account labels stay in private Runtime state.
+The Settings memory card measures the connected Runtime. Docker deployments use
+fixed host-side cgroup reads over SSH (current, peak, limit), excluding the operator
+and other VPS services, without a resident sampler. Local native deployments use
+the verified Runtime process tree. Hidden pages stop polling; failed reads are
+reported as unavailable and never replaced with local operator measurements.
+
 Cached provider names are display data, not proof that a sign-in is still valid.
 A provider that supplies no name is shown honestly. Codex labels are read only by
 the human operator; the ordinary model/probe account DTO still excludes identity.

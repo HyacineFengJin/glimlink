@@ -15,7 +15,7 @@ fn commands(invoke: tauri::ipc::Invoke<tauri::Wry>) -> bool {
         bridge::control_request,
         bridge::worker_control,
         launch::launch_connection,
-        memory::memory_snapshot,
+        bridge::memory_snapshot,
         x_login::open_x_login_window,
         x_login::open_x_in_browser,
     ];
@@ -39,9 +39,14 @@ fn main() {
                 .iter()
                 .find(|window| window.label == "main")
                 .ok_or("main window configuration missing")?;
-            let main = tauri::WebviewWindowBuilder::from_config(app, config)?
-                .on_navigation(security::local_document)
-                .build()?;
+            let builder = tauri::WebviewWindowBuilder::from_config(app, config)?
+                .on_navigation(security::local_document);
+            // Niri already provides window management; avoid GTK's extra title bar.
+            #[cfg(target_os = "linux")]
+            let builder = if std::env::var_os("NIRI_SOCKET").is_some()
+                || std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|v| v.split(':').any(|d| d.eq_ignore_ascii_case("niri")))
+            { builder.decorations(false) } else { builder };
+            let main = builder.build()?;
             let handle = app.handle().clone();
             main.on_window_event(move |event| {
                 if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {

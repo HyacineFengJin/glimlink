@@ -25,7 +25,7 @@
   let connectionEpoch = 0;
   const titles = new Map();
   const expandedReplies=new Map();
-  const pageNames = { connections: ['连接', '账号与 Runtime，各自保持连接。'], control: ['调控 · 会话', '和 AI 对话，选择引擎，调整它的节奏。'], commands: ['指令', '把管理权交给明确获准的会话。'], settings: ['设置', '外观、语言与这台操控端的状态。'] };
+  const pageNames = { connections: ['连接', '账号与 Runtime，各自保持连接。'], control: ['调控 · 会话', '和 AI 对话，选择引擎，调整它的节奏。'], commands: ['指令', '把管理权交给明确获准的会话。'], settings: ['设置', '外观、语言与 Runtime 的状态。'] };
   const modeNames = { active: '活跃', quiet: '安静', paused: '暂停' };
   const jobNames = { pending: '排队中', running: '正在回复', completed: '已完成', needs_auth: '需要登录', failed: '未完成', interrupted: '已中断', canceled: '已取消' };
   const verbs = { help: '查看帮助', status: '查看状态', agent: '切换 Agent', model: '切换模型', enable: '启用 Agent', disable: '暂停 Agent', quiet: '只响应直接消息', wake: '唤醒自主活动' };
@@ -38,7 +38,7 @@
   function schedule() { clearPoll(); if (page === 'control' && !document.hidden) poll = setTimeout(() => refresh().catch(() => {}), 5000); }
   function setPage(next) {
     if (!pageNames[next]) return;
-    page = next; window.GlimlinkPage = page;
+    const changed = page !== next; page = next; window.GlimlinkPage = page; if (changed) window.scrollTo(0, 0);
     document.querySelectorAll('[data-page]').forEach((n) => { n.hidden = n.dataset.page !== page; });
     document.querySelectorAll('[data-view]').forEach((n) => { const selected = n.dataset.view === page; n.classList.toggle('selected', selected); if (selected) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current'); });
     q('#page-name').textContent = t(pageNames[page][0]); q('#page-description').textContent = t(pageNames[page][1]);
@@ -70,8 +70,8 @@
     const ownJobs = (snapshot.jobs || []).filter((j) => j.context?.agent === currentAgent);
     const activeJob = ownJobs.find((j) => j.status === 'running');
     q('#agent-live').replaceChildren(ownNode('span', 'state-pill', modeNames[snapshot.preferences?.modes?.[currentAgent] || 'active']), ownNode('p', '', activeJob ? '当前轮结束后应用活跃状态变更。' : '当前没有正在运行的回复。'));
-    q('#conversation-agent').textContent = `${currentAgent} · ${snapshot.profiles?.[currentAgent]?.engine || '—'}`;
-    renderConversations(); renderActivities();
+    q('#conversation-agent').textContent = ({codex:'Codex',antigravity:'Antigravity'})[snapshot.profiles?.[currentAgent]?.engine] || '—';
+    renderConversations(); renderActivities(); window.GlimlinkSelects?.refresh();
   }
   function renderConversations() {
     const map = new Map();
