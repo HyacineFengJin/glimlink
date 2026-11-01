@@ -14,7 +14,7 @@ for name in agent-runtime agentctl; do
 done
 cp -R "$release_dir/share/glimlink/." "$prefix/share/glimlink/"
 chmod -R go+rX "$prefix/share/glimlink"
-for file in LICENSE NOTICE COPYING.AGPL-3.0 COPYING.GPL-3.0 DISTRIBUTION.txt BUILD.json DEPLOYMENT.md engine-login.md; do
+for file in LICENSE NOTICE COPYING.AGPL-3.0 COPYING.GPL-3.0 DISTRIBUTION.txt BUILD.json DEPLOYMENT.md engine-login.md deployment-docker.md control-console.md; do
   install -m 644 "$release_dir/$file" "$prefix/share/glimlink/$file"
 done
 for file in profile-codex.json profile-antigravity.json browsing.json persona.txt role.txt; do

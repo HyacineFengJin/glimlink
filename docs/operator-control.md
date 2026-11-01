@@ -206,7 +206,7 @@ No retry timer or account rotation runs in the background.
 
 The independently built [Tauri + Rust desktop](../operator-desktop/README.md)
 reuses `runtime-operator`'s login driver and bounded inspection API. Its packaged
-static frontend has no Node build or remote assets. Only fixed theme/density
+static frontend has no Node build or remote assets. Only fixed language/theme/density
 choices persist; account, connection and private input stay session-local.
 SSH management requires existing key/agent authentication and known_hosts,
 without opening a terminal or disabling host checks from a GUI worker.
@@ -223,3 +223,6 @@ Synthetic display tests use `client-test operator-webview`: a separate 1 GiB
 container limit and no account-state mount. This does not increase the VPS core
 budget. The test image's WebKit is development/client infrastructure, not a
 Runtime component or a browser bundled with a VPS release.
+
+Conversation, profile, activity and scoped chat-command management use the separate
+[control endpoint](control-console.md), without the login endpoint’s kernel lock.

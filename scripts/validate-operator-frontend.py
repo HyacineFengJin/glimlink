@@ -22,9 +22,28 @@ args = parser.parse_args()
 nonce = secrets.token_hex(24)
 mock = """<script>
 window.__calls=[];window.__maxConcurrent=0;window.__concurrent=0;window.__job=0;window.__memoryFailure=false;
+localStorage.setItem('glimlink.operator.language','zh-CN');
+window.__console={preferences:{revision:0,selected_agent:'main',modes:{}},profiles:{main:{revision:1,engine:'codex',model:'gpt-6.1-terra'}},agents:['main'],jobs:[],conversations:[],host:{status:'stopped'},worker_online:false,activities:{activities:[]}};
+window.__commandConfig={revision:0,config:{enabled:false,bindings:[]},receipts:[]};
 window.__TAURI__={event:{listen:async(name,callback)=>{window.__loginHandler=callback;return()=>{}}},core:{invoke:async(command,args)=>{
-  window.__calls.push({command,args});window.__concurrent++;window.__maxConcurrent=Math.max(window.__maxConcurrent,window.__concurrent);
-  await new Promise(r=>setTimeout(r,2));window.__concurrent--;
+  window.__calls.push({command,args});const tracked=['platform_capabilities','account_status'].includes(command);if(tracked){window.__concurrent++;window.__maxConcurrent=Math.max(window.__maxConcurrent,window.__concurrent);}
+  await new Promise(r=>setTimeout(r,2));if(tracked)window.__concurrent--;
+  if(command==='launch_connection')return null;
+  if(command==='control_request'){
+    const c=args.command,s=window.__console;
+    if(c.action==='connections')return {identities:[{platform:'bilibili',account:'main',name:'连接',status:'online'}],cached_display_only:true};
+    if(c.action==='snapshot')return JSON.parse(JSON.stringify(s));
+    if(c.action==='conversation')return {history:{turns:[],truncated:false},jobs:s.jobs.filter(j=>j.context.persona===c.persona&&j.context.conversation===c.conversation),bounded:true};
+    if(c.action==='send'){let j=s.jobs.find(j=>j.id===c.id);if(!j){j={id:c.id,user:c.text,context:{agent:c.agent,persona:c.persona,conversation:c.conversation},status:'pending',created_at:1,updated_at:1,model:s.profiles[c.agent].model};s.jobs.push(j)}return {job:j,queued:true};}
+    if(c.action==='select'){s.preferences.selected_agent=c.agent;return {selected_agent:c.agent};}
+    if(c.action==='mode'){s.preferences.modes[c.agent]=c.mode;return {applies_after_current_turn:true};}
+    if(c.action==='profile'){const old=s.profiles[c.agent];if((old?.revision||0)!==c.expected_revision)throw {code:'revision_conflict'};s.profiles[c.agent]={revision:(old?.revision||0)+1,engine:c.engine,model:c.model};s.agents=Object.keys(s.profiles);return {profile:s.profiles[c.agent]};}
+    if(c.action==='commands_get')return JSON.parse(JSON.stringify(window.__commandConfig));
+    if(c.action==='commands_set'){if(c.expected_revision!==window.__commandConfig.revision)throw {code:'revision_conflict'};window.__commandConfig={revision:c.expected_revision+1,config:c.config,receipts:[]};return JSON.parse(JSON.stringify(window.__commandConfig));}
+    if(c.action==='cancel'){const j=s.jobs.find(j=>j.id===c.id);if(j)j.status='canceled';return {canceled:true};}
+    return {};
+  }
+  if(command==='worker_control'){window.__console.worker_online=args.start;window.__console.host=args.start?{phase:'waiting'}:{status:'stopped'};return {ok:true,running:args.start};}
   if(command==='memory_snapshot'){if(window.__memoryFailure)throw new Error('synthetic sampling failure');return {available:true,partial:false,scope:'local_operator_process_tree',rss_bytes:20971520,pss_bytes:10485760,process_count:3,sampled_at_unix_ms:Date.now()};}
   if(command==='begin_login')return {login_id:'synthetic-'+(++window.__job)};
   if(command==='platform_capabilities')return {platform:args.platform,methods:[],reuse:true,paused:args.platform==='weixin'};
@@ -38,7 +57,7 @@ source = source.replace('<script src="app.js" defer></script>', '<script src="ap
 tests = args.tests.read_text().replace("textContent:JSON.stringify(results)}));", "textContent:JSON.stringify(results)}));fetch('/synthetic-result',{method:'POST',body:JSON.stringify(results)});")
 assert "fetch('/synthetic-result'" in tests
 routes = {'/' + nonce: (source.encode(), 'text/html; charset=utf-8'), '/test.js': (tests.encode(), 'application/javascript')}
-for name, mime in [('app.js', 'application/javascript'), ('styles.css', 'text/css')]:
+for name, mime in [('app.js', 'application/javascript'), ('console.js','application/javascript'),('locale.js','application/javascript'),('styles.css', 'text/css')]:
     routes['/' + name] = ((args.frontend / name).read_bytes(), mime)
 for asset in (args.frontend / 'brands').iterdir():
     if asset.suffix in {'.ico', '.png', '.jpg', '.svg'}:

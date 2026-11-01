@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 //! A small human client. No platform protocol, model engine or media dependency.
+pub mod console;
 pub mod interrupt;
 pub mod login;
 pub mod presentation;
@@ -160,6 +161,18 @@ fn shell_word(value: &str) -> Result<String> {
 /// All remote tokens are data, including a caller-chosen executable/state path.
 /// SSH host verification and authentication use the normal system configuration.
 pub fn launch_command(options: &Options) -> Result<Command> {
+    launch_endpoint(options, "serve")
+}
+pub fn launch_management(options: &Options) -> Result<Command> {
+    launch_endpoint(options, "manage")
+}
+pub fn launch_worker(options: &Options, start: bool) -> Result<Command> {
+    launch_endpoint(options, if start { "worker-start" } else { "worker-stop" })
+}
+pub fn launch_worker_status(options: &Options) -> Result<Command> {
+    launch_endpoint(options, "worker-status")
+}
+fn launch_endpoint(options: &Options, endpoint: &'static str) -> Result<Command> {
     let executable = options.runtime.clone().unwrap_or_else(|| {
         if options.ssh.is_some() {
             return PathBuf::from("agent-runtime");
@@ -184,7 +197,7 @@ pub fn launch_command(options: &Options) -> Result<Command> {
                 .to_str()
                 .ok_or("remote state path must be UTF-8")?,
             "operator",
-            "serve",
+            endpoint,
         ];
         let remote = format!(
             "exec {}",
@@ -209,7 +222,7 @@ pub fn launch_command(options: &Options) -> Result<Command> {
             .arg("--state")
             .arg(&options.state)
             .arg("operator")
-            .arg("serve");
+            .arg(endpoint);
         command
     };
     command

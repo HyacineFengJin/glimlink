@@ -319,6 +319,7 @@ fn run(state: &Path, account: &str, args: &[String], mind_state: Option<&Path>) 
             break;
         }
         let time = agent_host::now()?;
+        let command_setup = crate::chat_commands::sync_watches(state).is_ok();
         // A broken/full source journal must not prevent already queued jobs
         // from draining. GC also stops conservatively if source pins cannot be
         // inspected; no uncommitted job is deleted to repair that error.
@@ -329,6 +330,7 @@ fn run(state: &Path, account: &str, args: &[String], mind_state: Option<&Path>) 
         if let Some(id) = source["watch_id"].as_str() {
             last_source = Some(id.into());
         }
+        let controls = crate::control_console::preferences(state)?;
         let maintenance = match gc_terminal(state, &queue, retain as usize) {
             Ok(()) => json!({"status":"ok"}),
             Err(_) => {
@@ -338,14 +340,19 @@ fn run(state: &Path, account: &str, args: &[String], mind_state: Option<&Path>) 
         let mut queued = queue
             .list(runtime_jobs::MAX_JOBS)?
             .into_iter()
-            .filter(|j| j.status == Status::Pending)
+            .filter(|j| j.status == Status::Pending && controls.permits(j))
             .min_by(|a, b| {
                 a.created_at
                     .cmp(&b.created_at)
                     .then_with(|| a.id.cmp(&b.id))
             });
         let activity = if queued.is_none() {
-            match crate::agent_activity::ActivityStore::open(state)?.schedule(state, &queue, time) {
+            match crate::agent_activity::ActivityStore::open(state)?.schedule_filtered(
+                state,
+                &queue,
+                time,
+                |c| controls.autonomous(&c.context.agent),
+            ) {
                 Ok(Some(id)) => {
                     queued = Some(queue.get(&id)?);
                     json!({"scheduled":true,"job_id":id})
@@ -367,7 +374,7 @@ fn run(state: &Path, account: &str, args: &[String], mind_state: Option<&Path>) 
             }
             agent_host::write_status(
                 state,
-                &json!({"phase":"running_job","updated_at":time,"pid":std::process::id(),"cycles":count,"model_process_limit":1}),
+                &json!({"phase":"running_job","updated_at":time,"pid":std::process::id(),"cycles":count,"model_process_limit":1,"current_job":project(state,&job),"model_process_active":true}),
             )?;
             let report = match selected.engine {
                 agent_host::EngineKind::Codex => agent_host::run_job_controlled(
@@ -412,7 +419,7 @@ fn run(state: &Path, account: &str, args: &[String], mind_state: Option<&Path>) 
             || run.is_some()
             || source["polled"] == true
         {
-            let snapshot = json!({"phase":if stopped_auth{"needs_auth"}else{"waiting"},"updated_at":agent_host::now()?,"pid":std::process::id(),"cycles":count,"completed_jobs_this_run":completed,"last_job":last_job,"last_source":source,"activity":activity,"maintenance":maintenance,"model_process_active":false,"model_process_limit":1});
+            let snapshot = json!({"phase":if stopped_auth{"needs_auth"}else{"waiting"},"updated_at":agent_host::now()?,"pid":std::process::id(),"cycles":count,"completed_jobs_this_run":completed,"last_job":last_job,"last_source":source,"activity":activity,"maintenance":maintenance,"commands_ready":command_setup,"model_process_active":false,"model_process_limit":1});
             agent_host::write_status(state, &snapshot)?;
             if run.is_some() {
                 let mut out = std::io::stdout().lock();
@@ -466,7 +473,21 @@ fn poll_one_source(
             );
         }
     };
-    let already_queued = match enqueue_events(queue, &batch.operator_prompt, &batch.events) {
+    let mut ordinary = Vec::new();
+    for event in &batch.events {
+        let handled = crate::chat_commands::dispatch_with(
+            state,
+            event,
+            time,
+            |account, target, operation, text| {
+                runtime.call("social.send",&json!({"account":account,"target_ref":target,"operation_id":operation,"text":text})).map(|_|())
+            },
+        )?;
+        if !handled && !crate::chat_commands::command_watch(&batch.operator_prompt) {
+            ordinary.push(event.clone());
+        }
+    }
+    let already_queued = match enqueue_events(queue, &batch.operator_prompt, &ordinary) {
         Ok(count) => count,
         Err(error) => {
             return Ok(

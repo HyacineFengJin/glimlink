@@ -14,6 +14,7 @@ pagination, downloads and action receipts.
 - Semantic platform tools through MCP or the managed agent host.
 - On-demand image, GIF, video-frame and speech processing.
 - A headless runtime and a separate optional desktop operator, connected locally or over SSH.
+- English/Chinese control pages for conversations, models, Agent activity and scoped Runtime commands.
 
 The runtime contains no browser engine, V8, Blink or Chromium. The desktop can
 use the operating system's WebView for human login.
@@ -59,6 +60,7 @@ jobs. Authentication remains in dedicated profiles and preserves subscription lo
 See [operator and SSH setup](docs/operator-control.md),
 [engine login](docs/engine-login.md), [agent profiles](docs/agent-profiles.md)
 and the optional [desktop operator](operator-desktop/README.md).
+See [control and commands](docs/control-console.md) for the human management boundary.
 
 ## Development
 

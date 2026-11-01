@@ -13,6 +13,7 @@ Runtime 处理账号会话、目标、分页、下载和操作回执。
 - 通过 MCP 或托管 Agent 宿主提供语义化平台工具。
 - 按需处理图片、GIF、视频画面和语音。
 - 精简无界面的 Runtime，与独立可选操控端通过本地管道或 SSH 连接。
+- 中英文独立页面，可查看会话、发消息、切模型、调整 Agent 活跃状态及配置限定会话的管理指令。
 
 Runtime 不嵌入浏览器内核、V8、Blink 或 Chromium。桌面操控端可使用
 操作系统的 WebView 完成人工登录。
@@ -55,6 +56,7 @@ cargo build --release --locked -p runtime-operator --bin agentctl
 
 继续阅读[操控端与 SSH](docs/operator-control.md)、[引擎登录](docs/engine-login.md)、
 [岗位配置](docs/agent-profiles.md)和可选的[桌面操控端](operator-desktop/README.md)。
+管理权限与指令边界见[调控与指令说明](docs/control-console.md)。
 
 ## 开发
 

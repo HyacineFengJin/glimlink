@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 name: glimlink
 x-runtime: &runtime
-  image: glimlink:0.1.0-alpha.1
+  image: glimlink:0.1.0-alpha.2
   user: "10001:10001"
   read_only: true
   cap_drop: [ALL]
@@ -32,3 +32,13 @@ services:
     profiles: [manual]
     restart: "no"
     command: ["--state", "/state", "doctor"]
+  management:
+    <<: *runtime
+    profiles: [manual]
+    restart: "no"
+    mem_limit: 96m
+    mem_reservation: 16m
+    memswap_limit: 96m
+    cpus: 0.25
+    pids_limit: 32
+    command: ["--state", "/state", "operator", "manage"]

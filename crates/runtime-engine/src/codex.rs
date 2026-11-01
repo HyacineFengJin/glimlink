@@ -448,6 +448,18 @@ impl CodexClient {
     pub fn thread_start(&mut self, model: Option<&str>) -> Result<ThreadHandle> {
         self.thread_start_with_tools(model, &[])
     }
+    /// Human operator display only. Kept separate from model/probe AccountStatus.
+    pub fn account_display_name(&mut self) -> Result<Option<String>> {
+        self.require_initialized()?;
+        let v = self.rpc("account/read", json!({"refreshToken":false}))?;
+        let a = &v["account"];
+        Ok(["displayName", "name", "email"].iter().find_map(|key| {
+            a[*key]
+                .as_str()
+                .filter(|s| !s.is_empty() && s.len() <= 256 && !s.chars().any(char::is_control))
+                .map(str::to_owned)
+        }))
+    }
     pub fn thread_start_with_tools(
         &mut self,
         model: Option<&str>,

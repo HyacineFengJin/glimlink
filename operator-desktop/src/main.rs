@@ -12,6 +12,8 @@ fn commands(invoke: tauri::ipc::Invoke<tauri::Wry>) -> bool {
         bridge::begin_login,
         bridge::submit_login_input,
         bridge::cancel_login,
+        bridge::control_request,
+        bridge::worker_control,
         launch::launch_connection,
         memory::memory_snapshot,
         x_login::open_x_login_window,

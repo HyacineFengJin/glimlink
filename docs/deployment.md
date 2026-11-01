@@ -12,12 +12,12 @@ Download the Linux archive and `SHA256SUMS` from the same Glimlink GitHub releas
 Verify its checksum, extract it, enter the extracted directory, then run:
 
 ```sh
-release_url=https://github.com/HyacineFengJin/glimlink/releases/download/v0.1.0-alpha.1
-curl -fLO "$release_url/glimlink-0.1.0-alpha.1-linux-x86_64.tar.gz"
+release_url=https://github.com/HyacineFengJin/glimlink/releases/download/v0.1.0-alpha.2
+curl -fLO "$release_url/glimlink-0.1.0-alpha.2-linux-x86_64.tar.gz"
 curl -fLO "$release_url/SHA256SUMS"
 sha256sum --ignore-missing -c SHA256SUMS
-tar -xzf glimlink-0.1.0-alpha.1-linux-x86_64.tar.gz
-cd glimlink-0.1.0-alpha.1-linux-x86_64
+tar -xzf glimlink-0.1.0-alpha.2-linux-x86_64.tar.gz
+cd glimlink-0.1.0-alpha.2-linux-x86_64
 ```
 
 ```sh

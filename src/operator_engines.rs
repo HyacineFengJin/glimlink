@@ -125,9 +125,14 @@ impl EngineLoginManager {
                     account.auth_kind.as_deref(),
                     Some("chatgpt" | "chatgpt_auth_tokens")
                 );
+            let display_name = if subscription {
+                client.account_display_name().ok().flatten()
+            } else {
+                None
+            };
             Ok(
                 json!({"engine":engine,"status":if subscription{"authenticated"}else{"signed_out"},"authenticated":subscription,
-                "subscription_login":true,"login_started":false,"model_turn_started":false}),
+                "display_name":display_name,"user":display_name.as_ref().map(|name|json!({"id":name,"name":name})),"subscription_login":true,"login_started":false,"model_turn_started":false}),
             )
         } else {
             let config = self.settings(engine).antigravity_config(&self.state)?;

@@ -7,6 +7,7 @@ RUN apt-get update \
 COPY bin/agent-runtime /usr/local/bin/agent-runtime
 COPY share/glimlink /usr/local/share/glimlink
 COPY LICENSE NOTICE DISTRIBUTION.txt COPYING.* /usr/local/share/glimlink/
+COPY BUILD.json /usr/local/share/glimlink/BUILD.json
 ENV HOME=/state/home \
     GLIMLINK_CODEX_BINARY=/engines/codex-native \
     GLIMLINK_ANTIGRAVITY_BINARY=/engines/antigravity-native

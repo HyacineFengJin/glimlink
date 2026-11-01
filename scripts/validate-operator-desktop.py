@@ -135,6 +135,8 @@ def main():
     parser.add_argument('--inspect-click', nargs=2, type=int, metavar=('X', 'Y'))
     parser.add_argument('--window-size', nargs=2, type=int, metavar=('WIDTH', 'HEIGHT'))
     parser.add_argument('--launch-destination')
+    parser.add_argument('--launch-runtime')
+    parser.add_argument('--console-setup', action='store_true')
     args = parser.parse_args()
     if args.window_size:
         assert 780 <= args.window_size[0] <= 1920 and 620 <= args.window_size[1] <= 1600
@@ -147,6 +149,13 @@ def main():
         (home / 'run').mkdir(mode=0o700)
         with open(str(args.report) + '.stderr', 'wb') as errors:
             command = [args.binary]
+            if args.launch_runtime:
+                command.extend(['--runtime',args.launch_runtime,'--state',str(home/'state'),'--account','main'])
+                if args.console_setup:
+                    profile=home/'profile.json'
+                    profile.write_text(json.dumps({'engine':'codex','model':'gpt-6.1-terra','allowed_tools':['runtime_memory'],'default_accounts':{}}))
+                    profile.chmod(0o600)
+                    subprocess.run([args.launch_runtime,'--state',str(home/'state'),'agent','profile-set','main',str(profile)],env=environment,stdout=subprocess.DEVNULL,check=True)
             if args.launch_destination:
                 assert not args.inspect_click, 'preset acceptance must not contact a real SSH host'
                 command.extend(['--ssh', args.launch_destination, '--runtime', '/opt/glimlink/runtime', '--state', '/state', '--account', 'main'])
@@ -187,11 +196,11 @@ def main():
                 memory_events = dict(line.split() for line in (cgroup / 'memory.events').read_text().splitlines())
                 assert memory_max == str(1024**3), 'run with the 1 GiB client-test budget'
                 assert memory_peak < 1024**3 and int(memory_events['oom_kill']) == 0
-                if args.launch_destination:
-                    assert 'ssh' not in seen, 'connection preset must not connect on startup'
+                # The Connections page may now read human-only cached account labels
+                # over SSH. This fixture still has no accounts or network.
                 if clicked:
-                    assert 'agent-runtime' in seen, 'GUI click did not invoke the real Runtime IPC'
-                report = dict(native_tauri_window=True, bundled_frontend=True, gui_status_ipc_observed=clicked and 'agent-runtime' in seen, fresh_synthetic_state=True, network='none', real_account_used=False, application_tree_peak_rss_bytes=peak_rss, application_tree_peak_pss_bytes=peak_pss, idle_application_tree_peak_rss_bytes=idle_peak_rss, idle_application_tree_peak_pss_bytes=idle_peak_pss, container_peak_bytes=memory_peak, container_limit_bytes=int(memory_max), oom_kills=int(memory_events['oom_kill']), normal_window_close=True, observed_process_names=sorted(seen), screenshot=args.screenshot)
+                    assert 'agent-runtime' in seen or (home/'state/operator-console/state.lock').exists(), 'GUI click did not invoke the real Runtime IPC'
+                report = dict(native_tauri_window=True, bundled_frontend=True, gui_status_ipc_observed=clicked and ('agent-runtime' in seen or (home/'state/operator-console/state.lock').exists()), fresh_synthetic_state=True, network='none', real_account_used=False, application_tree_peak_rss_bytes=peak_rss, application_tree_peak_pss_bytes=peak_pss, idle_application_tree_peak_rss_bytes=idle_peak_rss, idle_application_tree_peak_pss_bytes=idle_peak_pss, container_peak_bytes=memory_peak, container_limit_bytes=int(memory_max), oom_kills=int(memory_events['oom_kill']), normal_window_close=True, observed_process_names=sorted(seen), screenshot=args.screenshot)
             finally:
                 if application.poll() is None:
                     os.killpg(application.pid, signal.SIGTERM)

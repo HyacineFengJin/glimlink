@@ -737,5 +737,12 @@
     "scope": "Linux x86_64 headless Runtime and terminal operator, with complete corresponding source; optional desktop branding/native engines/models/signers excluded.",
     "record": "docs/releases/0.1.0-alpha.1.md",
     "origin_policy": "Retain existing licenses and provenance, not an MIT-only relicense. Pending mixed-source classifications remain explicit."
+  },
+  "release_review_alpha2": {
+    "date": "2026-11-01",
+    "version": "0.1.0-alpha.2",
+    "scope": "Original control-console, command receiver and operator UI changes; existing third-party notices retained.",
+    "record": "docs/releases/0.1.0-alpha.2.md",
+    "license_scope_unchanged": true
   }
 }

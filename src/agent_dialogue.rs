@@ -219,6 +219,12 @@ impl Store {
             .unwrap_or_default())
     }
 
+    /// Operator-only bounded conversation directory; never a model tool.
+    pub fn conversations(&self) -> Result<Value> {
+        let Some(_lock) = self.transaction(false)? else { return Ok(json!([])); };
+        Ok(json!(self.read()?.conversations.iter().map(|c|json!({"persona":c.persona,"conversation":c.conversation,"turns":c.history.turns.len(),"truncated":c.history.truncated})).collect::<Vec<_>>()))
+    }
+
     /// Idempotent for a retained (job ID, execution ID) with an identical turn. A different
     /// Agent in the same persona/conversation appends to the same transcript.
     /// For a model turn, use append_at_epoch with the captured context epoch.

@@ -92,6 +92,9 @@ def main():
     for origin, name in [('scripts/release/install.sh','install.sh'), ('scripts/install-engines.sh','install-engines.sh'), ('docs/deployment.md','DEPLOYMENT.md')]:
         shutil.copy2(source / origin, bundle / name)
     shutil.copy2(source / 'docs/engine-login.md', bundle / 'engine-login.md')
+    for name in ['deployment-docker.md','control-console.md']:
+        shutil.copy2(source/'docs'/name,bundle/name)
+    shutil.copytree(source/'scripts/release/docker',bundle/'docker')
     for name in ['install.sh', 'install-engines.sh']:
         (bundle / name).chmod(0o755)
     shutil.copy2(source / 'LICENSE', bundle / 'LICENSE')

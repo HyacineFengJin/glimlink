@@ -15,6 +15,7 @@ pub mod human_ui;
 pub mod login_window;
 
 pub type Result<T> = std::result::Result<T, String>;
+pub mod console;
 pub const VERSION: u32 = 1;
 pub const MAX_FRAME: usize = 1024 * 1024;
 pub const MAX_SECRET: usize = 256 * 1024;

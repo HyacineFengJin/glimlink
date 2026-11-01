@@ -123,6 +123,7 @@ impl Connection {
         // The GUI has no terminal for a manual nonce URL fallback. An explicit
         // helper failure is preferable to leaking a private portal link to logs.
         options.ui = runtime_operator::presentation::UiMode::Webview;
+        options.ssh_batch = true;
         Ok(options)
     }
 }
@@ -163,6 +164,54 @@ struct Shared {
 #[derive(Default)]
 pub struct Sessions {
     shared: Arc<Shared>,
+}
+#[tauri::command]
+pub async fn control_request(
+    connection: Connection,
+    command: runtime_control::console::Command,
+    sessions: State<'_, Sessions>,
+) -> ApiResult<Value> {
+    let shared = sessions.shared.clone();
+    let options = connection.options(Platform::Runtime, Action::Status, "auto")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let _gate = shared
+            .inspection
+            .lock()
+            .map_err(|_| ApiError::transport())?;
+        idle(&shared)?;
+        let snapshot = matches!(&command, runtime_control::console::Command::Snapshot);
+        let mut value = runtime_operator::console::request(&options, command)
+            .map_err(|code| ApiError::new(&code, "管理请求未完成，请检查状态或重新读取。"))?;
+        if snapshot && options.ssh.is_some() {
+            if let Ok(host) = runtime_operator::console::worker_status(&options) {
+                value["worker_online"] = host["running"].clone();
+                value["worker_source"] = json!("docker");
+            }
+        }
+        Ok(value)
+    })
+    .await
+    .map_err(|_| ApiError::transport())?
+}
+#[tauri::command]
+pub async fn worker_control(
+    connection: Connection,
+    start: bool,
+    sessions: State<'_, Sessions>,
+) -> ApiResult<Value> {
+    let shared = sessions.shared.clone();
+    let options = connection.options(Platform::Runtime, Action::Status, "auto")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let _gate = shared
+            .inspection
+            .lock()
+            .map_err(|_| ApiError::transport())?;
+        idle(&shared)?;
+        runtime_operator::console::worker(&options, start)
+            .map_err(|code| ApiError::new(&code, "此部署暂不支持工作进程管理，或服务操作未完成。"))
+    })
+    .await
+    .map_err(|_| ApiError::transport())?
 }
 impl Sessions {
     pub(crate) fn x_cookie_ticket(&self, id: &str) -> ApiResult<CookieTicket> {

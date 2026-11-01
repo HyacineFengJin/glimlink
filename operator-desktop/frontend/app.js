@@ -111,7 +111,7 @@ function renderMemory(sample) {
   $('#memory-message').textContent = sample.partial ? '部分进程未能读取，统计可能不完整。RSS 会重复计入共享页。' : 'RSS 会重复计入共享页；PSS 按比例分摊。';
   $('#memory-state').textContent = memoryPaused ? '已暂停' : document.hidden ? '后台暂停' : '每 3 秒采样';
   const when = new Date(sample.sampled_at_unix_ms);
-  $('#memory-time').textContent = when.toLocaleTimeString('zh-CN', { hour12: false });
+  $('#memory-time').textContent = when.toLocaleTimeString(window.GlimlinkI18n?.language() || 'en', { hour12: false });
   $('#memory-time').dateTime = when.toISOString();
   const ceiling = Math.max(1048576, ...memorySamples) * 1.15;
   const points = memorySamples.map((bytes, index) => `${memorySamples.length === 1 ? 0 : index / (memorySamples.length - 1) * 100},${37 - bytes / ceiling * 32}`);
@@ -120,10 +120,10 @@ function renderMemory(sample) {
 }
 function scheduleMemory() {
   clearTimeout(memoryTimer); memoryTimer = null;
-  if (bridge && !memoryPaused && !memoryDisposed && !document.hidden) memoryTimer = setTimeout(sampleMemory, 3000);
+  if (bridge && !memoryPaused && !memoryDisposed && !document.hidden && window.GlimlinkPage === 'settings') memoryTimer = setTimeout(sampleMemory, 3000);
 }
 async function sampleMemory() {
-  if (!bridge || memoryInFlight || memoryPaused || memoryDisposed || document.hidden) return;
+  if (!bridge || memoryInFlight || memoryPaused || memoryDisposed || document.hidden || window.GlimlinkPage !== 'settings') return;
   memoryInFlight = true;
   try {
     const sample = await invoke('memory_snapshot', {});
@@ -203,7 +203,12 @@ function presentation(status) {
 function safeIdentity(value) {
   const identity = value?.identity;
   const user = value?.user;
-  if (identity && typeof identity === 'object') return [identity.label, identity.id].filter((item) => typeof item === 'string' || typeof item === 'number').join(' · ').slice(0, 180);
+  if (typeof value?.display_name === 'string' && value.display_name) return value.display_name.slice(0,180);
+  if (user && typeof user === 'object') {
+    const name = user.display_name || user.name || user.uname || user.nickname || user.user_name || user.login || user.screen_name;
+    if (typeof name === 'string' && name) return name.slice(0,180);
+  }
+  if (identity && typeof identity === 'object') return [identity.label || identity.name || identity.display_name, identity.id].filter((item) => typeof item === 'string' || typeof item === 'number').join(' · ').slice(0, 180);
   if (typeof identity === 'string' || typeof identity === 'number') return String(identity).slice(0, 180);
   if (user) return [user.name || user.login || user.display_name, user.id || user.mid || user.user_id].filter((item) => typeof item === 'string' || typeof item === 'number').join(' · ').slice(0, 180);
   return '';
@@ -225,15 +230,17 @@ function render() {
       logo.src = brandAssets[platform.id];
       logo.alt = `${platform.name} 标志`;
       logo.width = 28; logo.height = 28;
-      logo.addEventListener('error', () => { icon.replaceChildren(element('span', 'brand-fallback', platform.name.slice(0, 1))); });
+      logo.addEventListener('error', () => { const initial=element('span','brand-fallback',(window.GlimlinkI18n?.text(platform.name)||platform.name).slice(0,1));initial.setAttribute('translate','no');icon.replaceChildren(initial); });
       icon.append(logo);
     } else {
-      icon.append(element('span', 'brand-fallback', platform.name.slice(0, 1)));
+      const initial=element('span','brand-fallback',(window.GlimlinkI18n?.text(platform.name)||platform.name).slice(0,1));initial.setAttribute('translate','no');icon.append(initial);
     }
     const badge = element('span', `account-state ${statusClass}`, statusText);
     top.append(icon, badge);
     const name = element('div', 'account-name');
     name.append(element('h3', '', platform.name), element('span', 'platform-tag', platform.label));
+    const accountName=element('p',`account-display-name${state.displayName?'':' pending-identity'}`,state.displayName || (['saved_session','saved_token'].includes(state.status)?'已保存账号，平台暂未提供名称':['online','authenticated'].includes(state.status)?'已登录，平台暂未提供名称':state.checked?'未登录':'未核验账号'));
+    if(state.displayName)accountName.setAttribute('translate','no');
     const detail = element('p', 'account-detail', state.detail);
     detail.title = state.detail;
     const actions = element('div', 'account-actions');
@@ -247,7 +254,7 @@ function render() {
     check.disabled = !bridge || paused || Boolean(active) || refreshing || connectionDirty || state.status === 'checking';
     check.addEventListener('click', () => checkOne(platform.id));
     actions.append(login, check);
-    card.append(top, name, detail, actions);
+    card.append(top, name, accountName, detail, actions);
     if (platform.id === 'x') {
       const update = element('button', 'x-refresh-login', '更新网页登录态');
       update.type = 'button';
@@ -288,8 +295,9 @@ async function checkOne(platform, quiet = false) {
       state.status = 'paused'; state.detail = '个人账号测试暂停，不执行任何账号请求。';
     } else {
       const value = await invoke('account_status', { connection, platform });
+      state.displayName=safeIdentity(value);
       state.status = value.status || (value.authenticated === true ? 'authenticated' : 'unknown');
-      state.detail = safeIdentity(value) || (state.status === 'saved_session' || state.status === 'saved_token' ? '本地已保存，尚未核验服务端有效性' : state.status === 'signed_out' ? `账号别名 ${connection.account} 尚未登录` : platformFor(platform).description);
+      state.detail = state.displayName ? '账号名称来自已连接的平台。' : (state.status === 'saved_session' || state.status === 'saved_token' ? '本地已保存，尚未核验服务端有效性' : state.status === 'signed_out' ? `账号别名 ${connection.account} 尚未登录` : platformFor(platform).description);
     }
     state.checked = true;
     markBridgeAvailable();
@@ -471,8 +479,9 @@ function handleLoginEvent(payload) {
   if (payload.kind === 'finished') {
     const status = data.status || 'failed';
     state.status = status; state.checked = true;
+    const displayName=safeIdentity(data);if(displayName)state.displayName=displayName;
     state.error = data.error?.code ? publicCode(data.error) : null;
-    state.detail = status === 'authenticated' ? (safeIdentity(data) || (data.reused_session ? '已核验并复用原有登录态' : '登录已确认，账号状态已保存')) : data.error ? `${publicCode(data.error)} · ${publicMessage(data.error)}` : status === 'cancelled' ? '验证会话已关闭，已有登录态保留。' : '操作已结束，请检查账号状态。';
+    state.detail = status === 'authenticated' ? (data.reused_session ? '已核验并复用原有登录态' : '登录已确认，账号状态已保存') : data.error ? `${publicCode(data.error)} · ${publicMessage(data.error)}` : status === 'cancelled' ? '验证会话已关闭，已有登录态保留。' : '操作已结束，请检查账号状态。';
     note(`${platformFor(payload.platform).name} · ${presentation(status)[0]}${state.error ? ` (${state.error})` : ''}`);
     active = null; clearInput(); render();
     if (status === 'authenticated') markBridgeAvailable();
@@ -525,8 +534,9 @@ async function applyConnection(event) {
   $('#connection-summary').textContent = selectedMode === 'ssh' ? `通过 SSH 控制 ${destination}` : '控制这台电脑上的 Runtime';
   $('#connection-feedback').textContent = connection.mode === 'ssh' ? '使用系统 SSH 密钥与 known_hosts；首次连接请先在终端确认主机。' : '配置已应用。连接本机 Runtime，不需要 SSH。';
   $('#connection-feedback').classList.remove('error');
-  for (const platform of platforms) Object.assign(states.get(platform.id), { status: platform.paused ? 'paused' : 'unknown', detail: platform.description, checked: false, error: null });
+  for (const platform of platforms) Object.assign(states.get(platform.id), { status: platform.paused ? 'paused' : 'unknown', detail: platform.description, displayName:null, checked: false, error: null });
   note(selectedMode === 'ssh' ? '已选择 SSH 控制通道' : '已选择本地控制通道');
+  window.dispatchEvent(new Event('operator:connection'));
   await refreshAll();
 }
 
@@ -550,8 +560,6 @@ $('#connection-form').addEventListener('input', markConnectionDirty);
 document.querySelectorAll('.segment').forEach((button) => button.addEventListener('click', () => setMode(button.dataset.mode)));
 $('#refresh-all').addEventListener('click', refreshAll);
 $('#cancel-active').addEventListener('click', cancelLogin);
-$('#connection-shortcut').addEventListener('click', () => { $('#connection-card').scrollIntoView({ behavior: 'smooth', block: 'center' }); $('#account').focus(); });
-$('#activity-shortcut').addEventListener('click', () => $('#activity-card').scrollIntoView({ behavior: 'smooth', block: 'center' }));
 $('#input-form').addEventListener('submit', submitInput);
 $('#x-window-open').addEventListener('click', openXWindow);
 $('#x-browser-open').addEventListener('click', openXBrowser);
@@ -566,6 +574,8 @@ document.addEventListener('visibilitychange', () => {
   else if (!memoryPaused) sampleMemory();
 });
 window.addEventListener('pagehide', () => { memoryDisposed = true; clearTimeout(memoryTimer); memoryTimer = null; });
+window.addEventListener('operator:view',()=>{clearTimeout(memoryTimer);memoryTimer=null;if(window.GlimlinkPage==='settings')sampleMemory();});
+window.addEventListener('operator:language',render);
 window.addEventListener('pageshow', () => { memoryDisposed = false; sampleMemory(); });
 
 async function initialize() {
@@ -590,6 +600,7 @@ async function initialize() {
         connectionDirty = false;
         $('#connection-summary').textContent = preset.mode === 'ssh' ? `通过 SSH 控制 ${preset.destination}` : '控制这台电脑上的 Runtime';
         $('#connection-feedback').textContent = '已载入启动器的连接配置；尚未检查账号或发起登录。';
+        window.dispatchEvent(new Event('operator:connection'));
       }
     } catch (_) { toast('无法读取启动器连接配置，请手动设置。'); }
     try { await tauri.event.listen('operator-login', (event) => handleLoginEvent(event.payload)); }

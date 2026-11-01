@@ -1,6 +1,6 @@
 # Glimlink Operator
 
-An original MIT Tauri 2 + Rust human login console with a static HTML/CSS/JS
+An original MIT Tauri 2 + Rust human control console with a static HTML/CSS/JS
 frontend. It uses Material 3 / expressive visual principles and a Bento layout,
 without a Node frontend build or a JavaScript application framework. Tauri and
 its system WebView retain their own licenses. The small application glyph is
@@ -160,8 +160,9 @@ credentials through the Runtime protocol. Local mode controls the adjacent core
 executable; an explicit Runtime path and state directory can be configured.
 An explicit desktop launcher may prefill connection metadata with `--ssh HOST
 --runtime /opt/glimlink/runtime --state /state --account main`. These arguments
-do not contain credentials, persist account data, connect on startup or start a
-login. The same main-window IPC origin checks protect this read-only preset.
+do not contain credentials, persist account data or start a login. Connections
+may read cached human-only account labels over SSH, even while the worker runs.
+The same main-window IPC origin checks protect these read-only requests.
 
 Personal WeChat testing remains paused, including in this UI. QQ's current live
 password result remains `140022017 / SEC_BEAT`, with cause unconfirmed. A new
@@ -175,5 +176,19 @@ Only packaged local frontend content can navigate in the main window. The CSP
 allows local assets and Tauri IPC, with no remote frames, fonts or script CDN.
 Capabilities grant only event listen/unlisten. There are no generic shell,
 filesystem, HTTP or opener plugins; the registered commands are specific to
-connection inspection, login input and cancellation. Raw native/transport errors
+connection inspection, login and typed conversation/profile/command management. Raw native/transport errors
 are replaced by public messages. No model-facing tool exposes these controls.
+
+## Control pages
+
+Connections, Control/conversations, Commands and Settings are separate pages with
+English and Simplified Chinese UI. Messages are queued through the shared Rust
+management API; model/profile/activity edits apply to future turns. Conversation
+management remains available while the worker owns the kernel. The Docker host
+wrapper provides typed worker start/stop/status without giving Runtime a Docker
+socket. See [the management boundary](../docs/control-console.md).
+
+Only fixed language/theme/density values persist in browser storage. Cached
+provider account names stay in private Runtime state, separate from credentials
+and model context. The public build retains text marks; private workstation
+builds may opt into locally sourced provider artwork as documented above.

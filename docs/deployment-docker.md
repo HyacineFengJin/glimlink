@@ -21,9 +21,9 @@ The supplied layout is:
 
 The Compose template runs as UID 10001, drops capabilities, sets
 `no-new-privileges`, makes the root filesystem read-only, and publishes no ports.
-Each container is limited to 512 MiB including native engine children, no swap,
+The worker/login containers are limited to 512 MiB including native engine children, no swap,
 one CPU, 128 processes and a 32 MiB temporary filesystem. Logs rotate at 5 MiB
-with two files. Docker/containerd and the operating system consume memory outside
+with two files. Short management-only containers use a separate 96 MiB / quarter-CPU cap and never run models. Docker/containerd and the operating system consume memory outside
 that per-container limit; leave room for them and other services.
 
 On the operator computer, configure an SSH key and verify/pin the server's host

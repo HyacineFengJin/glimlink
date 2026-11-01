@@ -72,7 +72,23 @@ pub(crate) fn execute_legacy(
             Platform::Runtime => {
                 json!({"accounts":runtime.call("runtime.accounts",&json!({}))?,"modules":runtime.call("runtime.modules",&json!({}))?})
             }
-            platform => runtime.call(&format!("{}.status", platform.name()), &json!({}))?,
+            platform => {
+                let mut value = runtime.call(&format!("{}.status", platform.name()), &json!({}))?;
+                if value["status"] == "saved_session"
+                    && matches!(platform, Platform::Bilibili | Platform::Tieba | Platform::X)
+                {
+                    if let Ok(details) =
+                        runtime.call(&format!("{}.me", platform.name()), &json!({}))
+                    {
+                        if details["user"].is_object() {
+                            value["user"] = details["user"].clone();
+                            value["status"] = json!("online");
+                            value["online_checked"] = json!(true);
+                        }
+                    }
+                }
+                value
+            }
         },
         Action::ImportLogin => match request.platform {
             Platform::Bilibili => runtime.bilibili_import_login(path()?)?,
@@ -274,7 +290,15 @@ pub fn serve(state: &Path, mut reader: impl BufRead, mut writer: impl Write) -> 
             write_json(&mut writer, &Frame::event(request.id, event, data))
         });
         let response = match result {
-            Ok(value) => Frame::success(request.id, value),
+            Ok(value) => {
+                let _ = crate::operator_identities::remember(
+                    state,
+                    request.platform.name(),
+                    &request.account,
+                    &value,
+                );
+                Frame::success(request.id, value)
+            }
             Err(error) => public_failure(request.id, &error),
         };
         write_json(&mut writer, &response)?;

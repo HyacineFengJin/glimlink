@@ -279,22 +279,58 @@ impl ActivityStore {
     /// Reserve first, then enqueue. A crash between the two repeats the same ID
     /// and frozen profile; it never creates a second autonomous turn.
     pub fn schedule(&self, state: &Path, queue: &Queue, now: u64) -> Result<Option<String>> {
+        self.schedule_filtered(state, queue, now, |_| true)
+    }
+    pub fn toggle(&self, id: &str, enabled: bool, wake: bool, now: u64) -> Result<Value> {
+        self.0.update(|s: &mut State| {
+            s.validate()?;
+            let a = s
+                .activities
+                .iter_mut()
+                .find(|a| a.config.id == id)
+                .ok_or("activity_not_found")?;
+            a.config.enabled = enabled;
+            a.config_revision = a
+                .config_revision
+                .checked_add(1)
+                .ok_or("activity revision exhausted")?;
+            if enabled && wake {
+                if a.pending.is_some() {
+                    return Err("activity has an unsettled turn".into());
+                }
+                a.halted = false;
+                a.next_wake_at = now;
+            }
+            Ok(())
+        })?;
+        self.list()
+    }
+    pub fn schedule_filtered(
+        &self,
+        state: &Path,
+        queue: &Queue,
+        now: u64,
+        eligible: impl Fn(&Config) -> bool,
+    ) -> Result<Option<String>> {
         self.reconcile(queue, now)?;
         if !self.load()?.activities.iter().any(|a| {
-            a.pending.is_some() || (a.config.enabled && !a.halted && a.next_wake_at <= now)
+            eligible(&a.config)
+                && (a.pending.is_some() || (a.config.enabled && !a.halted && a.next_wake_at <= now))
         }) {
             return Ok(None);
         }
         let reservation = self.0.update(|s: &mut State| {
             s.validate()?;
-            if let Some(a) = s.activities.iter().find(|a| a.pending.is_some()) {
+            if let Some(a) = s
+                .activities
+                .iter()
+                .find(|a| eligible(&a.config) && a.pending.is_some())
+            {
                 return Ok(Some((a.config.clone(), a.pending.clone().unwrap())));
             }
-            for a in s
-                .activities
-                .iter_mut()
-                .filter(|a| a.config.enabled && !a.halted && a.next_wake_at <= now)
-            {
+            for a in s.activities.iter_mut().filter(|a| {
+                eligible(&a.config) && a.config.enabled && !a.halted && a.next_wake_at <= now
+            }) {
                 if now < a.budget_start {
                     return Err("activity clock moved backwards".into());
                 }
@@ -310,7 +346,9 @@ impl ActivityStore {
             let Some(a) = s
                 .activities
                 .iter_mut()
-                .filter(|a| a.config.enabled && !a.halted && a.next_wake_at <= now)
+                .filter(|a| {
+                    eligible(&a.config) && a.config.enabled && !a.halted && a.next_wake_at <= now
+                })
                 .min_by_key(|a| (a.next_wake_at, a.config.id.clone()))
             else {
                 return Ok(None);

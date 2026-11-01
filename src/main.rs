@@ -483,6 +483,10 @@ fn run() -> Result<()> {
                 io::stdout().lock(),
             )
         }
+        "operator" if args.len() == 2 && args[1] == "manage" => {
+            agent_runtime::control_console::serve(&options.state, io::stdin().lock(), io::stdout().lock())
+        }
+        "operator" if args.len()==2 && matches!(args[1].as_str(),"worker-start"|"worker-stop"|"worker-status") => emit(&json!({"ok":false,"code":"worker_control_unavailable"})),
         "engine" => engine(&options, &args[1..]),
         "speech" => {
             let directory = agent_runtime::app::speech_model_directory(&options.state)?;
