@@ -80,8 +80,8 @@
       let saved = attributes.get(n); if (!saved) { saved = {}; attributes.set(n, saved); }
       for (const key of ['title', 'placeholder', 'aria-label']) if (n.hasAttribute(key)) { const value = n.getAttribute(key); const old = saved[key]; const source = old && value === old.last ? old.source : value; const next = text(source); saved[key] = { source, last: next }; if (value !== next) n.setAttribute(key, next); }
     });
-    document.documentElement.lang = language;
-    document.querySelectorAll('[data-language-choice]').forEach(n => n.setAttribute('aria-pressed', String(n.dataset.languageChoice === language)));
+    if (document.documentElement.lang !== language) document.documentElement.lang = language;
+    document.querySelectorAll('[data-language-choice]').forEach(n => { const value=String(n.dataset.languageChoice === language); if(n.getAttribute('aria-pressed')!==value)n.setAttribute('aria-pressed',value); });
   }
   function set(value) { if (!['en', 'zh-CN'].includes(value)) return; language = value; try { localStorage.setItem('glimlink.operator.language', language); } catch (_) {} localize(); window.dispatchEvent(new Event('operator:language')); }
   window.GlimlinkI18n = { text, language: () => language, set, refresh: localize };

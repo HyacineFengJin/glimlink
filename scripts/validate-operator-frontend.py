@@ -6,12 +6,15 @@ Run in the isolated operator-webview image with Xvfb and private D-Bus.
 No account state, remote service, or native Runtime is used by the fixture.
 """
 import argparse
+import ctypes
 import http.server
+import importlib.util
 import json
 from pathlib import Path
 import secrets
 import subprocess
 import threading
+import time
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--window-helper', default='/cache/bin/agent-login-window')
@@ -21,6 +24,7 @@ parser.add_argument('--report', type=Path, default=Path('/reports/operator-front
 args = parser.parse_args()
 nonce = secrets.token_hex(24)
 mock = """<script>
+window.__errors=[];window.addEventListener('error',e=>window.__errors.push(e.message));
 window.__calls=[];window.__maxConcurrent=0;window.__concurrent=0;window.__job=0;window.__memoryFailure=false;
 localStorage.setItem('glimlink.operator.language','zh-CN');
 window.__console={preferences:{revision:0,selected_agent:'main',modes:{}},profiles:{main:{revision:1,engine:'codex',model:'gpt-6.1-terra'}},agents:['main'],jobs:[],conversations:[],host:{status:'stopped'},worker_online:false,activities:{activities:[]}};
@@ -29,6 +33,8 @@ window.__TAURI__={event:{listen:async(name,callback)=>{window.__loginHandler=cal
   window.__calls.push({command,args});const tracked=['platform_capabilities','account_status'].includes(command);if(tracked){window.__concurrent++;window.__maxConcurrent=Math.max(window.__maxConcurrent,window.__concurrent);}
   await new Promise(r=>setTimeout(r,2));if(tracked)window.__concurrent--;
   if(command==='launch_connection')return null;
+  if(command==='ime_capabilities')return true;
+  if(command==='ime_cursor_area')return null;
   if(command==='window_action'){if(args.action==='toggle_maximize')window.__maximized=!window.__maximized;return {maximized:!!window.__maximized,can_minimize:false};}
   if(command==='control_request'){
     const c=args.command,s=window.__console;
@@ -58,7 +64,7 @@ source = source.replace('<script src="app.js" defer></script>', '<script src="ap
 tests = args.tests.read_text().replace("textContent:JSON.stringify(results)}));", "textContent:JSON.stringify(results)}));fetch('/synthetic-result',{method:'POST',body:JSON.stringify(results)});")
 assert "fetch('/synthetic-result'" in tests
 routes = {'/' + nonce: (source.encode(), 'text/html; charset=utf-8'), '/test.js': (tests.encode(), 'application/javascript')}
-for name, mime in [('app.js', 'application/javascript'), ('console.js','application/javascript'),('locale.js','application/javascript'),('selects.js','application/javascript'),('window.js','application/javascript'),('styles.css', 'text/css')]:
+for name, mime in [('app.js', 'application/javascript'), ('console.js','application/javascript'),('locale.js','application/javascript'),('selects.js','application/javascript'),('window.js','application/javascript'),('input.js','application/javascript'),('styles.css', 'text/css')]:
     routes['/' + name] = ((args.frontend / name).read_bytes(), mime)
 for asset in (args.frontend / 'brands').iterdir():
     if asset.suffix in {'.ico', '.png', '.jpg', '.svg'}:
@@ -89,6 +95,21 @@ threading.Thread(target=server.serve_forever, daemon=True).start()
 window = subprocess.Popen([args.window_helper], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
 try:
     window.stdin.write(json.dumps(dict(version=1, action='open', url=f'http://127.0.0.1:{server.server_port}/{nonce}', title='Synthetic frontend acceptance', timeout_secs=20)) + '\n'); window.stdin.flush()
+    # Xvfb has no window manager to activate GTK windows. Give the synthetic
+    # helper real X focus so requestAnimationFrame/IME geometry runs normally.
+    spec = importlib.util.spec_from_file_location('desktop_acceptance', Path(__file__).with_name('validate-operator-desktop.py'))
+    desktop = importlib.util.module_from_spec(spec); spec.loader.exec_module(desktop)
+    display = desktop.Display()
+    display.x.XSetInputFocus.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong]
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        match = next((wid for wid, title in display.windows() if title == 'Synthetic frontend acceptance'), None)
+        if match:
+            display.x.XSetInputFocus(display.display, match, 2, 0); display.x.XFlush(display.display)
+            break
+        time.sleep(0.01)
+    else:
+        raise AssertionError('synthetic window did not map')
     assert finished.wait(15), 'synthetic UI did not finish in the real WebKit window'
     args.report.write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps(result))

@@ -220,10 +220,16 @@ Only bounded in-memory drafts/outgoing messages are retained, never localStorage
 Unchanged message nodes stay attached across polls, and visual polling updates
 are deferred while the IME is composing.
 
-On native Niri/Wayland, an inherited `GTK_IM_MODULE=fcitx` is replaced for this
-operator process with GTK's `wayland` input module, before GTK initialization.
-This lets the compositor position the candidate popup; Fcitx documents GTK3's
-client-side show/hide limitation in its [Wayland guide](https://fcitx-im.org/wiki/Using_Fcitx_5_on_Wayland#Popup_candidate_window).
-Other applications and desktop settings are unchanged. Set
-`GLIMLINK_OPERATOR_IM_MODULE=inherit` to preserve the inherited module, or choose
-`wayland`, `fcitx`, `ibus`, `xim` or `simple` explicitly for this operator.
+Linux retains the desktop's input-method and display-backend settings. The main
+WebView restores standard inline preedit (disabled by default in Wry), so real
+composition events reach the editor. A shared text-input adapter synchronizes viewport caret geometry with the system WebKitGTK
+input context for plain text inputs and textareas. It measures wrapping, internal
+scrolling, document scrolling, selection, and page zoom; only bounded coordinates
+cross local IPC. Input contents never leave the WebView through this adapter.
+Password fields, contenteditable, rotated editors and vertical writing are not
+custom editors supported by this adapter. The Runtime is not involved. There is
+no compositor-specific environment override or graphics fallback.
+
+DOM tests exercise geometry and composition/delivery separately. Native candidate
+placement also requires desktop IME acceptance; dispatching JavaScript composition
+events alone does not validate the input-method popup.

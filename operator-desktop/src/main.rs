@@ -10,6 +10,8 @@ mod x_login;
 fn commands(invoke: tauri::ipc::Invoke<tauri::Wry>) -> bool {
     let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
         window::window_action,
+        ime::ime_capabilities,
+        ime::ime_cursor_area,
         bridge::platform_capabilities,
         bridge::account_status,
         bridge::begin_login,
@@ -25,10 +27,6 @@ fn commands(invoke: tauri::ipc::Invoke<tauri::Wry>) -> bool {
     handler(invoke)
 }
 fn main() {
-    ime::prepare().unwrap_or_else(|error| {
-        eprintln!("Cannot prepare operator input method: {error}");
-        std::process::exit(2)
-    });
     let defaults =
         launch::Defaults::parse(std::env::args().skip(1).collect()).unwrap_or_else(|message| {
             eprintln!("{message}");
@@ -49,6 +47,7 @@ fn main() {
             let builder = tauri::WebviewWindowBuilder::from_config(app, config)?
                 .on_navigation(security::local_document);
             let main = builder.decorations(false).build()?;
+            ime::initialize(&main)?;
             let handle = app.handle().clone();
             main.on_window_event(move |event| {
                 if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
