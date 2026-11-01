@@ -207,3 +207,23 @@ Only fixed language/theme/density values persist in browser storage. Cached
 provider account names stay in private Runtime state, separate from credentials
 and model context. The public build retains text marks; private workstation
 builds may opt into locally sourced provider artwork as documented above.
+
+## Chat input and delivery
+
+Enter sends; Shift+Enter inserts a newline. Composition, key code 229, and the
+commit Enter immediately after composition-end are excluded from submission.
+A local outgoing bubble appears and the composer clears before any SSH request
+settles. New drafts remain independent of acknowledgements, retries and other
+conversations. Uncertain delivery keeps the original message and operation ID;
+manual retry reuses that ID, and canonical history reconciles a lost response.
+Only bounded in-memory drafts/outgoing messages are retained, never localStorage.
+Unchanged message nodes stay attached across polls, and visual polling updates
+are deferred while the IME is composing.
+
+On native Niri/Wayland, an inherited `GTK_IM_MODULE=fcitx` is replaced for this
+operator process with GTK's `wayland` input module, before GTK initialization.
+This lets the compositor position the candidate popup; Fcitx documents GTK3's
+client-side show/hide limitation in its [Wayland guide](https://fcitx-im.org/wiki/Using_Fcitx_5_on_Wayland#Popup_candidate_window).
+Other applications and desktop settings are unchanged. Set
+`GLIMLINK_OPERATOR_IM_MODULE=inherit` to preserve the inherited module, or choose
+`wayland`, `fcitx`, `ibus`, `xim` or `simple` explicitly for this operator.

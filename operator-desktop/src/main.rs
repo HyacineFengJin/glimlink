@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 mod bridge;
+mod ime;
 mod launch;
 mod memory;
 mod security;
@@ -24,6 +25,10 @@ fn commands(invoke: tauri::ipc::Invoke<tauri::Wry>) -> bool {
     handler(invoke)
 }
 fn main() {
+    ime::prepare().unwrap_or_else(|error| {
+        eprintln!("Cannot prepare operator input method: {error}");
+        std::process::exit(2)
+    });
     let defaults =
         launch::Defaults::parse(std::env::args().skip(1).collect()).unwrap_or_else(|message| {
             eprintln!("{message}");

@@ -3,6 +3,7 @@
 // marked translate=no and are never rewritten or persisted by this module.
 (() => {
   const en = {
+    '发送中':'Sending','送达尚未确认':'Delivery unconfirmed','发送失败':'Send failed','重试发送':'Retry send','请先处理未送达的消息，再继续发送。':'Resolve undelivered messages before sending more.','Enter 发送 · Shift+Enter 换行':'Enter to send · Shift+Enter for a new line',
     '在浏览器中获取 Token ↗':'Get a token in browser ↗',
     '开始登录检查':'Checking sign-in','已取消':'Cancelled',
     '窗口标题栏':'Window title bar','最小化':'Minimize','最大化':'Maximize','还原窗口':'Restore window','关闭窗口':'Close window','窗口操作未完成。':'The window action did not complete.',
