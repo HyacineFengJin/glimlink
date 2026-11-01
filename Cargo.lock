@@ -45,7 +45,7 @@ dependencies = [
 
 [[package]]
 name = "agent-runtime"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "base64 0.22.1",
  "image",
@@ -1935,11 +1935,13 @@ dependencies = [
  "candle-core",
  "candle-nn",
  "candle-transformers",
+ "libc",
  "rayon",
  "serde",
  "serde_json",
  "sha2",
  "tokenizers",
+ "tracing",
  "ureq",
 ]
 

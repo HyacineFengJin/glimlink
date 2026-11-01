@@ -36,6 +36,8 @@ struct WatchCache {
     manifest: ResourceRef,
     #[serde(default)]
     created_at: u64,
+    #[serde(default)]
+    quality: platform_bilibili::VideoQuality,
 }
 const WATCH_CACHE: &str = "task-video-cache";
 const MEDIA_CACHE: &str = "task-media-cache";
@@ -75,6 +77,9 @@ fn reference(value: &str) -> Result<()> {
 }
 
 fn detect_media(path: &Path) -> Result<Detection> {
+    detect_media_with_limits(path, &runtime_media::Limits::default())
+}
+fn detect_media_with_limits(path: &Path, limits: &runtime_media::Limits) -> Result<Detection> {
     let mut file = open_regular(path, Budget::default().max_resource_bytes)?;
     let mut magic = [0; 32];
     let length = file.read(&mut magic).map_err(|e| e.to_string())?;
@@ -145,8 +150,7 @@ fn detect_media(path: &Path) -> Result<Detection> {
         }) {
             return Err("AVIF/HEIF image decoding is unavailable".into());
         }
-        let probe = runtime_media::video::probe_video(path, &runtime_media::Limits::default())
-            .map_err(|e| e.to_string())?;
+        let probe = runtime_media::video::probe_video(path, limits).map_err(|e| e.to_string())?;
         let embedded_audio = probe.tracks.iter().any(|track| track.audio);
         if probe.tracks.iter().any(|track| {
             !track.audio
@@ -273,13 +277,15 @@ impl Runtime {
     }
 
     fn watch_video_current(&mut self, params: &Value) -> Result<Value> {
+        let quality = super::media_view::quality(params, platform_bilibili::VideoQuality::Preview)?;
+        super::media_view::view(params)?;
         let video: VideoId = required_str(params, "video")?
             .parse()
             .map_err(|e: platform_bilibili::Error| e.to_string())?;
         let page = u32::try_from(number(params, "page", 1)?).map_err(|_| "invalid video page")?;
         let start = number(params, "start_ms", 0)?;
         let duration = number(params, "duration_ms", 10_000)?;
-        let edge = number(params, "max_edge", 480)?;
+        let edge = number(params, "max_edge", u64::from(quality.default_edge()))?;
         let interval = number(params, "interval_ms", duration.div_ceil(4).max(1))?;
         let limits = runtime_media::Limits::default();
         limits
@@ -301,12 +307,13 @@ impl Runtime {
             return Err("media.watch manages media resources internally; provide only video target and time window".into());
         }
         let scope = self.scope(Platform::Bilibili);
-        let cached = self.cached_watch_video(&scope, &video, page)?;
+        let cached = self.cached_watch_video_quality(&scope, &video, page, quality)?;
         let reused = cached.is_some();
         let cache = if let Some(cache) = cached {
             cache
         } else {
-            let fetched = self.fetch_bili(&json!({"video":video.to_string(),"page":page}))?;
+            let fetched =
+                self.fetch_bili(&json!({"video":video.to_string(),"page":page,"quality":quality}))?;
             let content = &fetched["content"];
             let video:ResourceRef=serde_json::from_value(content["video"].clone())
                 .map_err(|_|"video consists of multiple progressive files; combined timeline playback is not implemented")?;
@@ -334,6 +341,7 @@ impl Runtime {
                 audio,
                 manifest,
                 created_at: cache_time()?,
+                quality,
             }
         };
         let matches_requested = match &video {
@@ -355,7 +363,15 @@ impl Runtime {
             &crate::watch_sessions::MediaPreferences::default(),
         )?;
         let mut read = json!({"reference":cache.video.id,"start_ms":start,"duration_ms":duration,
-            "interval_ms":interval,"max_edge":edge,"transcribe":preferences.transcribe});
+            "interval_ms":interval,"max_edge":edge,"transcribe":preferences.transcribe,"include_audio":params.get("include_audio").and_then(Value::as_bool).unwrap_or(true)});
+        for key in ["region", "format"] {
+            if let Some(v) = params.get(key) {
+                read[key] = v.clone();
+            }
+        }
+        if params.get("_single_frame_detail") == Some(&json!(true)) {
+            read["_single_frame_detail"] = json!(true);
+        }
         if let Some(language) = &preferences.speech_language {
             read["speech_language"] = json!(language);
         }
@@ -370,6 +386,26 @@ impl Runtime {
             "title":manifest["info"]["title"],"duration_seconds":manifest["info"]["duration_seconds"],
             "preview_only":manifest["preview_only"]});
         result["scope"] = json!(scope);
+        result["source_quality"] = manifest["source_quality"].clone();
+        if result["source_quality"].is_null() {
+            result["source_quality"] = json!({"requested":quality});
+        }
+        if let Some(track) = result
+            .pointer("/window/probe/tracks")
+            .and_then(Value::as_array)
+            .and_then(|tracks| tracks.iter().find(|t| t["audio"] == false))
+        {
+            let w = track["width"].as_u64().unwrap_or(0);
+            let h = track["height"].as_u64().unwrap_or(0);
+            let actual = json!({"width":w,"height":h,"codec":track["codec"]});
+            result["source_quality"]["actual"] = actual;
+            result["source_quality"]["request_met"] =
+                json!(w > 0 && h > 0 && w.min(h) >= u64::from(quality.height()));
+        }
+        result["detail_note"] = json!(
+            "max_edge limits output only. region is cropped from source pixels before resizing; no upscaling. Check source_quality.actual/request_met; an unavailable source quality is never replaced by an enlarged preview."
+        );
+        self.link_watch_frames(&mut result, &scope, &cache.bvid, page)?;
         result["download"] = json!({"performed":!reused,"source":"bilibili_video",
             "method":"bilibili.fetch","reused_cached_media":reused,"cached_at":cache.created_at,"cache_ttl_seconds":CACHE_TTL_SECONDS});
         result["media_manifest"] = json!(cache.manifest);
@@ -393,11 +429,26 @@ impl Runtime {
         Ok(result)
     }
 
+    #[cfg(test)]
     fn cached_watch_video(
         &self,
         scope: &Scope,
         requested: &VideoId,
         page: u32,
+    ) -> Result<Option<WatchCache>> {
+        self.cached_watch_video_quality(
+            scope,
+            requested,
+            page,
+            platform_bilibili::VideoQuality::Preview,
+        )
+    }
+    fn cached_watch_video_quality(
+        &self,
+        scope: &Scope,
+        requested: &VideoId,
+        page: u32,
+        quality: platform_bilibili::VideoQuality,
     ) -> Result<Option<WatchCache>> {
         let now = cache_time()?;
         let mut stale: Vec<String> = Vec::new();
@@ -418,7 +469,11 @@ impl Runtime {
                     VideoId::Bv(id) => cache.bvid == *id,
                     VideoId::Av(id) => cache.aid == *id,
                 };
-                if cache.schema != 1 || cache.page != page || !same_video {
+                if cache.schema != 1
+                    || cache.page != page
+                    || !same_video
+                    || cache.quality != quality
+                {
                     continue;
                 }
                 let available = cache_fresh(cache.created_at, now)
@@ -630,6 +685,18 @@ impl Runtime {
     pub(super) fn read_media(&mut self, params: &Value) -> Result<Value> {
         let requested = required_str(params, "reference")?;
         reference(requested)?;
+        super::media_view::view(params)?;
+        if self
+            .locators
+            .scope_for(super::media_view::FRAME_ORIGIN, requested)
+            .is_ok()
+        {
+            let mut request = params.clone();
+            request.as_object_mut().unwrap().remove("reference");
+            request["action"] = json!("inspect");
+            request["frame_ref"] = json!(requested);
+            return self.inspect_video(&request);
+        }
         let start = number(params, "start_ms", 0)?;
         let duration = match params.get("duration_ms") {
             None => None,
@@ -639,9 +706,18 @@ impl Runtime {
             None => None,
             Some(_) => Some(number(params, "interval_ms", 0)?),
         };
-        let edge = u32::try_from(number(params, "max_edge", 480)?)
-            .map_err(|_| "invalid media resize edge")?;
-        let limits = runtime_media::Limits::default();
+        let quality = super::media_view::quality(params, platform_bilibili::VideoQuality::Preview)?;
+        let edge = u32::try_from(number(
+            params,
+            "max_edge",
+            u64::from(quality.default_edge()),
+        )?)
+        .map_err(|_| "invalid media resize edge")?;
+        let limits = if params.get("_single_frame_detail") == Some(&json!(true)) {
+            runtime_media::Limits::inspection()
+        } else {
+            runtime_media::Limits::default()
+        };
         if edge == 0
             || edge > limits.max_dimension
             || interval.is_some_and(|n| n == 0 || n > limits.max_window_ms)
@@ -662,7 +738,14 @@ impl Runtime {
             reference(id)?;
         }
         let input = self.resolve_media_input(requested)?;
-        let detection = detect_media(&input.path)?;
+        let detection = detect_media_with_limits(&input.path, &limits)?;
+        if matches!(detection.kind, MediaKind::Gif | MediaKind::Audio)
+            && (params.get("region").is_some() || params.get("format").is_some())
+        {
+            return Err(
+                "region/format rereading currently supports static images and video frames".into(),
+            );
+        }
         let (method, kind, default_duration) = match detection.kind {
             MediaKind::Image => ("media.image", "image", 0),
             MediaKind::Gif => ("media.gif", "gif", 3000),
@@ -670,6 +753,14 @@ impl Runtime {
             MediaKind::Audio => ("media.audio", "audio", 10_000),
         };
         let mut request = json!({"resource":input.resource.id,"max_edge":edge});
+        if params.get("_single_frame_detail") == Some(&json!(true)) {
+            request["_single_frame_detail"] = json!(true);
+        }
+        for key in ["region", "format"] {
+            if let Some(v) = params.get(key) {
+                request[key] = v.clone();
+            }
+        }
         let mut audio_download = None;
         if default_duration > 0 {
             let duration = duration.unwrap_or(default_duration);
@@ -680,7 +771,9 @@ impl Runtime {
             request["interval_ms"] = json!(interval.unwrap_or(duration.div_ceil(4).max(1)));
         }
         if matches!(detection.kind, MediaKind::Video) {
-            if let Some(id) = audio_reference {
+            if params.get("include_audio") == Some(&json!(false)) {
+                // Single-frame detail reads do not allocate/convert an audio window.
+            } else if let Some(id) = audio_reference {
                 let audio = self.resolve_media_input(id)?;
                 if audio.scope != input.scope {
                     return Err(
@@ -718,6 +811,14 @@ impl Runtime {
                 .pointer("/window/probe/duration_ms")
                 .and_then(Value::as_u64)
                 .is_some_and(|duration| start >= duration);
+        if matches!(detection.kind, MediaKind::Image) && params.get("quality").is_some() {
+            let width = result["source_width"].as_u64().unwrap_or(0);
+            let height = result["source_height"].as_u64().unwrap_or(0);
+            result["source_quality"] = json!({"requested":quality,"actual":{"width":width,"height":height},
+                "request_met":width>0 && height>0 && width.min(height)>=u64::from(quality.height()),
+                "selection":"existing_image_pixels","stream_reacquired":false,
+                "note":"This reference is an existing image. quality sets output bounds, but cannot add source pixels. To reread a video at higher source quality, pass its returned frame_ref to media_read, or media_watch action=inspect. A larger max_edge is not an HD stream upgrade."});
+        }
         let object = result
             .as_object_mut()
             .ok_or("media processor result must be an object")?;
@@ -910,9 +1011,21 @@ mod tests {
             audio: None,
             manifest,
             created_at: cache_time().unwrap(),
+            quality: platform_bilibili::VideoQuality::Preview,
         };
         let locator = runtime.locators.put(&scope, WATCH_CACHE, &cache).unwrap();
         let requested: VideoId = "BV17x411w7KC".parse().unwrap();
+        assert!(
+            runtime
+                .cached_watch_video_quality(
+                    &scope,
+                    &requested,
+                    1,
+                    platform_bilibili::VideoQuality::P1080
+                )
+                .unwrap()
+                .is_none()
+        );
         assert_eq!(
             runtime
                 .cached_watch_video(&scope, &requested, 1)

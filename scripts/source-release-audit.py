@@ -13,7 +13,7 @@ from pathlib import Path
 
 PRIVATE_PARTS = {'.git', '.runtime', 'experiments', '.state', '.cache', 'target', 'reports', 'logs', 'node_modules', '__pycache__', '.venv'}
 NATIVE_OR_MODEL = {'.node', '.so', '.dylib', '.dll', '.exe', '.a', '.o', '.deb', '.rpm', '.gguf', '.safetensors', '.onnx', '.p12', '.pfx', '.pem', '.key'}
-TEXT_SUFFIXES = {'.rs', '.toml', '.lock', '.md', '.json', '.go', '.py', '.sh', '.proto', '.txt', '.h', '.c', '.yml', '.yaml', '.html', '.css', '.js', '.svg'}
+TEXT_SUFFIXES = {'.rs', '.toml', '.lock', '.md', '.json', '.go', '.py', '.sh', '.proto', '.txt', '.h', '.c', '.yml', '.yaml', '.html', '.css', '.js', '.svg', '.service'}
 FIXTURE_SUFFIXES = {'.pcm', '.silk', '.amr', '.bin', '.bytes', '.mp4', '.h264', '.wav', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico'}
 SENSITIVE_NAMES = ['.env', '.env.*', 'auth.json', 'credentials.json', 'cookies.txt', 'cookies.json', '*cookie*.txt', '*cookie*.json', '*credential*.json', '*password*.json', '*password*.txt', '*session*.json', 'token.json', 'tokens.json', '*-token.json', '*_token.json', '*oauth*token*', '*bduss*', 'qrcode.png', 'qrcode.json']
 

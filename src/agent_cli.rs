@@ -78,7 +78,7 @@ fn project(state: &Path, job: &Job) -> Value {
         }
         Err(_) => json!({"status":"unavailable","needs_attention":true,"readonly":true}),
     };
-    json!({"id":job.id,"status":job.status,"engine":job.engine,"execution_profile":job.execution_profile,"context":job.context,"context_version":job.context_version,"created_at":job.created_at,"updated_at":job.updated_at,"started_at":job.started_at,"finished_at":job.finished_at,"progress":{"thread_id":job.progress.thread_id,"turn_id":job.progress.turn_id,"tool_calls":job.progress.tool_calls,"operation_ids":job.progress.operation_ids.iter().take(8).collect::<Vec<_>>(),"operation_count":job.progress.operation_ids.len(),"operation_ids_truncated":job.progress.operation_ids.len()>8},"action_evidence":evidence,"error":job.error.as_ref().map(|v|v.chars().take(512).collect::<String>())})
+    json!({"id":job.id,"activity":job.activity,"status":job.status,"engine":job.engine,"execution_profile":job.execution_profile,"context":job.context,"context_version":job.context_version,"created_at":job.created_at,"updated_at":job.updated_at,"started_at":job.started_at,"finished_at":job.finished_at,"progress":{"thread_id":job.progress.thread_id,"turn_id":job.progress.turn_id,"tool_calls":job.progress.tool_calls,"operation_ids":job.progress.operation_ids.iter().take(8).collect::<Vec<_>>(),"operation_count":job.progress.operation_ids.len(),"operation_ids_truncated":job.progress.operation_ids.len()>8},"action_evidence":evidence,"error":job.error.as_ref().map(|v|v.chars().take(512).collect::<String>())})
 }
 
 /// Model-facing detail deliberately excludes the operator task, observed
@@ -150,6 +150,12 @@ pub fn command_with_environment(
     private_dir(state)?;
     let action = args.first().map(String::as_str).unwrap_or("status");
     match action {
+        "activities" if args.len()==1=>crate::agent_activity::ActivityStore::open(state)?.list(),
+        "activity-set" if args.len()==2=>{
+            let config:crate::agent_activity::Config=serde_json::from_slice(&private_input(Path::new(&args[1]),65536)?).map_err(|_|"invalid activity config")?;
+            crate::agent_activity::ActivityStore::open(state)?.configure(config,agent_host::now()?)
+        },
+        "activity-wake" if args.len()==2=>crate::agent_activity::ActivityStore::open(state)?.wake(&args[1],agent_host::now()?),
         "status" if args.len()<=1=>summary(state),
         "jobs" if args.len()==1=>Ok(json!({"jobs":Queue::open(state)?.list(runtime_jobs::MAX_JOBS)?.iter().map(|job|project(state,job)).collect::<Vec<_>>()})),
         "job" if args.len()==2=>{
@@ -189,7 +195,8 @@ pub fn command_with_environment(
         "resume" if args.len()>=2=>Ok(json!({"resumed":Queue::open(state)?.resume_needs_auth(&args[1..],agent_host::now()?)?,"only_pre_model_auth_failures":true})),
         "cancel" if args.len()>=2=>Ok(json!({"canceled":Queue::open(state)?.cancel_pending(&args[1..],agent_host::now()?)?,"only_unexecuted_jobs":true})),
         "gc" if args.len()>=2=>{
-            let store=SourceStore::open(state)?;let protected=store.pending_job_ids()?.into_iter().collect::<BTreeSet<_>>();
+            let store=SourceStore::open(state)?;let mut protected=store.pending_job_ids()?.into_iter().collect::<BTreeSet<_>>();
+            protected.extend(crate::agent_activity::ActivityStore::open(state)?.pending_job_ids()?);
             if args[1..].iter().any(|id|protected.contains(id)){return Err("job belongs to an uncommitted source batch and cannot be removed".into())}
             Ok(json!({"removed":Queue::open(state)?.gc_finished(&args[1..])?}))
         }
@@ -197,7 +204,7 @@ pub fn command_with_environment(
             if context!=&runtime_jobs::AgentContext::default(){return Err("agent run uses the identity fixed at enqueue/watch; select persona/agent/conversation when creating tasks, not on the daemon".into())}
             run(state,account,&args[1..],mind_state)
         },
-        _=>Err("agent: status | jobs | job ID | enqueue ID PROMPT_FILE | profiles | profile AGENT | profile-set AGENT CONFIG_FILE [EXPECTED_REVISION] | watch CONFIG_FILE | watches | watch-enable ID | watch-disable ID | watch-abandon ID | watch-reset ID | watch-resume ID | resume ID... | cancel ID... | gc ID... | run [--engine codex|antigravity] [--once|--cycles N] [--poll-ms N] [--binary PATH] [--codex-binary PATH] [--antigravity-binary PATH] [--model NAME] [--model-catalog PATH] [--tools NAME,...] [--timeout-seconds N] [--retain-finished N]".into()),
+        _=>Err("agent: status | activities | activity-set CONFIG_FILE | activity-wake ID | jobs | job ID | enqueue ID PROMPT_FILE | profiles | profile AGENT | profile-set AGENT CONFIG_FILE [EXPECTED_REVISION] | watch CONFIG_FILE | watches | watch-enable ID | watch-disable ID | watch-abandon ID | watch-reset ID | watch-resume ID | resume ID... | cancel ID... | gc ID... | run [--engine codex|antigravity] [--once|--cycles N] [--poll-ms N] [--binary PATH] [--codex-binary PATH] [--antigravity-binary PATH] [--model NAME] [--model-catalog PATH] [--tools NAME,...] [--timeout-seconds N] [--retain-finished N]".into()),
     }
 }
 
@@ -286,7 +293,7 @@ fn run(state: &Path, account: &str, args: &[String], mind_state: Option<&Path>) 
         index += 1;
     }
     if settings.engine == agent_host::EngineKind::Antigravity && !binary_selected {
-        settings.binary = "/cache/bin/antigravity-native".into();
+        settings.binary = crate::deployment::native_binary(agent_host::EngineKind::Antigravity);
     }
     if cycles.is_some_and(|n| n == 0 || n > 1_000_000)
         || !(250..=60000).contains(&poll_ms)
@@ -328,7 +335,7 @@ fn run(state: &Path, account: &str, args: &[String], mind_state: Option<&Path>) 
                 json!({"status":"unavailable","deletion_skipped":true,"needs_attention":true})
             }
         };
-        let queued = queue
+        let mut queued = queue
             .list(runtime_jobs::MAX_JOBS)?
             .into_iter()
             .filter(|j| j.status == Status::Pending)
@@ -337,6 +344,18 @@ fn run(state: &Path, account: &str, args: &[String], mind_state: Option<&Path>) 
                     .cmp(&b.created_at)
                     .then_with(|| a.id.cmp(&b.id))
             });
+        let activity = if queued.is_none() {
+            match crate::agent_activity::ActivityStore::open(state)?.schedule(state, &queue, time) {
+                Ok(Some(id)) => {
+                    queued = Some(queue.get(&id)?);
+                    json!({"scheduled":true,"job_id":id})
+                }
+                Ok(None) => json!({"scheduled":false}),
+                Err(error) => json!({"scheduled":false,"needs_attention":true,"error":error}),
+            }
+        } else {
+            json!({"scheduled":false,"reason":"queued_work_has_priority"})
+        };
         let run = if let Some(job) = queued {
             let mut selected = settings.for_job(&job)?;
             let engine_name = match selected.engine {
@@ -393,7 +412,7 @@ fn run(state: &Path, account: &str, args: &[String], mind_state: Option<&Path>) 
             || run.is_some()
             || source["polled"] == true
         {
-            let snapshot = json!({"phase":if stopped_auth{"needs_auth"}else{"waiting"},"updated_at":agent_host::now()?,"pid":std::process::id(),"cycles":count,"completed_jobs_this_run":completed,"last_job":last_job,"last_source":source,"maintenance":maintenance,"model_process_active":false,"model_process_limit":1});
+            let snapshot = json!({"phase":if stopped_auth{"needs_auth"}else{"waiting"},"updated_at":agent_host::now()?,"pid":std::process::id(),"cycles":count,"completed_jobs_this_run":completed,"last_job":last_job,"last_source":source,"activity":activity,"maintenance":maintenance,"model_process_active":false,"model_process_limit":1});
             agent_host::write_status(state, &snapshot)?;
             if run.is_some() {
                 let mut out = std::io::stdout().lock();
@@ -466,10 +485,11 @@ fn poll_one_source(
 }
 fn gc_terminal(state: &Path, queue: &Queue, retain: usize) -> Result<()> {
     let store = SourceStore::open(state)?;
-    let protected = store
+    let mut protected = store
         .pending_job_ids()?
         .into_iter()
         .collect::<BTreeSet<_>>();
+    protected.extend(crate::agent_activity::ActivityStore::open(state)?.pending_job_ids()?);
     let mut jobs = queue
         .list(runtime_jobs::MAX_JOBS)?
         .into_iter()

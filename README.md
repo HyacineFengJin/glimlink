@@ -33,11 +33,16 @@ acceptance. See [validation](docs/validation.md) for the exact boundaries.
 
 ## Build and run
 
+For a VPS, use the Linux Alpha archive and follow [deployment](docs/deployment.md).
+It includes the Runtime, terminal operator, starter configuration and a user
+service; native subscription engines are explicitly installed from pinned upstream assets.
+
 The validated target is Linux. Use Rust 1.90+ and a system C/linker toolchain.
 Build on a development machine; the 512 MiB VPS budget applies to runtime use.
 
 ```sh
-cargo build --release --locked -p agent-runtime -p runtime-operator
+cargo build --release --locked -p agent-runtime --bin agent-runtime
+cargo build --release --locked -p runtime-operator --bin agentctl
 ./target/release/agent-runtime tools
 ./target/release/agent-runtime --state .runtime/state mcp
 ```
@@ -48,7 +53,7 @@ jobs. Authentication remains in dedicated profiles and preserves subscription lo
 
 ```sh
 ./target/release/agentctl --runtime ./target/release/agent-runtime \
-  --state .runtime/state --account personal bilibili login
+  --state .runtime/state --account bili-main bilibili login
 ```
 
 See [operator and SSH setup](docs/operator-control.md),

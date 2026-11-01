@@ -66,3 +66,130 @@ includes the real application's WebKit children, RSS/PSS samples, container peak
 and OOM events. Optional synthetic status inspection also includes native engine
 probe processes. It does not claim a real provider verification page's peak.
 The [acceptance summary](validation.md) records the measured workloads and limits.
+
+## Simulated use and overlapping workloads
+
+The opt-in `runtime-memory-workload` binary exercises the real Rust Runtime and
+native subscription engines. It is excluded from default builds. The external
+`scripts/measure-runtime.py` monitor samples the whole Docker cgroup and every
+child process; its own Python process is outside the measured container.
+
+With the native binaries and speech model already installed in the development
+cache, build the workload and prepare synthetic image/GIF fixtures:
+
+```sh
+bash scripts/isolate.sh build -- sh /workspace/scripts/cargo.sh build \
+  --release --locked --offline --features memory-bench \
+  --bin runtime-memory-workload
+install -m 700 .runtime/cache/target/release/runtime-memory-workload \
+  .runtime/cache/bin/runtime-memory-workload
+bash scripts/isolate.sh build -- /cache/bin/runtime-memory-workload prepare mem-fixtures
+# Supply a short test speech WAV explicitly; it is never downloaded implicitly.
+install -m 600 /path/to/test-speech.wav .runtime/cache/memory-bench-fixtures/speech.wav
+python3 scripts/measure-runtime.py --run-id mem-example
+```
+
+Defaults are a 384 MiB cgroup limit, two CPUs, no swap and nominal 100 ms samples.
+Offline cases use synthetic media and the supplied speech WAV; the measured
+acceptance used the public JFK sample. Online cases reuse Runtime-owned Bilibili/Tieba/X sessions
+and native Codex/Antigravity homes; GitHub reads the public project repository.
+They neither initiate login nor perform platform writes. QQ and Weixin are
+excluded. The fixed local acceptance account aliases are part of this fixture,
+not a general account discovery API.
+
+Reports and per-case state live only in ignored, private `.runtime` directories.
+Reports contain counts and memory/process metadata, not account credentials
+or platform response bodies. Actual-use cases additionally save the requested
+Agent answers in separate private `*-answer.json` artifacts; the monitor does
+not print them. Private copies of native binaries
+and model files receive best-effort file-cache eviction advice before each cold
+case; shared system libraries and native-profile caches can remain warm. This
+is not a cold-boot VPS measurement or a global host-cache flush.
+
+`platform-parallel` uses four independent Runtime processes with separate state.
+The combined cases retain those processes while a fifth Runtime runs one model
+task and speech transcription; a second platform request wave starts when the
+model invokes its tool. Another 32 jobs remain queued. This exercises overlap
+across processes without claiming concurrent dispatch inside one Runtime.
+`codex-platforms` and `antigravity-platforms` instead ask one agent task to use the
+semantic tools for all four platforms and their returned references.
+
+The `*-use`, `*-watch` and `*-speech` cases provide ordinary Chinese goals and
+let the Agent select tools. `*-vision` compares fresh random image pixels with
+the model's answer, covering a still image and four frames without exposing
+the expected colors in tool text. Model selection is frozen in the test job:
+
+```sh
+python3 scripts/measure-runtime.py --run-id agent-use-example \
+  --cases codex-use,antigravity-use,codex-watch,antigravity-watch \
+  --codex-model gpt-6.1-terra \
+  --antigravity-model gemini-3.8-flash-medium
+```
+
+The named models are explicit local acceptance targets, not universal deployment
+defaults. The opt-in Runtime records bounded per-tool status/count/image metadata;
+default builds contain neither the trace buffer nor its recording code. Review
+actual media replies against the sampled frames: model completion and tool
+success are separate from interpretation accuracy.
+
+Always inspect functional completion and `memory.events`, not only exit status.
+A model can finish a reply without invoking the required tools. A peak equal to
+`memory.max` with reclaim events and no OOM is a pressure result, not proof of
+comfortable headroom. RSS/PSS are sampled and may miss brief allocation spikes;
+the kernel cgroup high-water counter captures the overall peak. Docker does not
+include the host OS or operator desktop in that number.
+
+## Vocabulary working set and autonomous home-feed acceptance
+
+The speech path keeps its vocabulary in Q8_0 storage and expands bounded f32
+rows/tiles, rather than materializing the full ~76 MiB f32 table. Projection
+uses the original f32 arithmetic and pinned weights, not another activation
+quantization. Encoder weights are released after feature extraction. On Linux,
+loaded GGUF file pages receive a readonly per-file DONTNEED hint; the owned CPU
+weights remain intact. Subsequent windows may require more disk I/O.
+
+The Antigravity Go soft target remains 128 MiB by default. A trusted embedding
+may set `AntigravityConfig.go_memory_limit_mib`; 64 MiB was evaluated, including
+successful autonomous tasks, but one later job ended without a final reply.
+The data do not establish causation, so the lower target is not adopted as the
+default. A soft Go target is not an RSS cap.
+
+`*-browse` starts from the signed-in homepage recommendation tool and lets the
+Agent choose a candidate and at most two ten-second windows. The measurement
+checks the selected video against actual returned candidate IDs, image delivery,
+window budget, and final reply. It never posts the model's evaluation.
+
+```sh
+python3 scripts/measure-runtime.py --run-id home-example \
+  --cases codex-browse,antigravity-browse \
+  --codex-model gpt-6.1-terra --antigravity-model gemini-3.8-flash-medium
+```
+
+`--program-dir` permits a private archived binary set for controlled before/after
+runs. Reports include executable hashes. Memory improvements must include actual
+working-set/RSS/PSS evidence; file-cache reclaim alone is not a smaller live
+model. Observed tasks, account scope and one-run measurement limits remain
+separate from full-machine or long-running deployment acceptance.
+
+On GNU/Linux the completed speech call also requests `malloc_trim` after its
+worker pool and model temporaries have finished, releasing unused allocator
+pages before the Agent waits on more I/O. No background trimmer is started.
+The four-round image/speech fixture retained about 18 MiB process-tree PSS,
+versus 156 MiB before these changes; this is distinct from container file cache.
+
+## Source-aware visual detail
+
+AI may choose source quality and a normalized source region through the existing
+media tools. Compact preview remains available; text/UI detail rereads use a
+source-linked frame reference, bounded HD AVC retrieval and a single cropped
+frame. Cropping the YUV-to-RGB conversion avoids a full RGB copy, but H264
+reference buffers still decode the full source. The normal 96 MiB conservative
+decoder estimate remains; single-frame, no-audio inspection has a 192 MiB
+estimate ceiling and a one-second/one-frame limit. Whole-process/cgroup memory
+must still be measured; the estimate is not RSS.
+
+Prepared geometry and actual model attachment geometry are separately reported.
+Detail is not automatically resized to the old 64 KiB preview budget: a bounded
+512 KiB total raw-image allowance fits within the 1 MiB wire frame. An oversized
+detail produces an explicit input-unavailable/partial result so the AI can choose
+a tighter region or explicit JPEG. There is no upscaling substitute for HD.

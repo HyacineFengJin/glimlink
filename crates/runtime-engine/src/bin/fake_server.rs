@@ -197,6 +197,18 @@ fn agent_job(scenario: &str) {
                         );
                     }
                 }
+                if scenario == "agent_job_activity" {
+                    let first = request["params"]["input"][0]["text"].as_str().unwrap();
+                    let data: Value =
+                        serde_json::from_str(first.split_once('\n').unwrap().1).unwrap();
+                    assert_eq!(data["autonomous_activity"]["activity_id"], "browsing");
+                    assert!(data["recent_dialogue"].is_null());
+                    assert!(
+                        !request["params"]["input"]
+                            .to_string()
+                            .contains("Current operator task")
+                    );
+                }
                 turns += 1;
                 let turn = format!("agent-job-turn-{turns}");
                 let answer = if scenario == "agent_job_mind_reader" {
@@ -246,6 +258,16 @@ fn agent_job(scenario: &str) {
                         .as_array()
                         .is_some_and(|modules| !modules.is_empty())
                 );
+                if scenario == "agent_job_activity" {
+                    send(json!({"id":2500,"method":"item/tool/call","params":{
+                        "threadId":current,"turnId":turn,"callId":"activity-note","tool":"runtime_memory","namespace":null,
+                        "arguments":{"action":"activity_save","expected_revision":0,"checkpoint":{
+                            "summary":"CODEX_ACTIVITY_OBSERVATION","interests":["visual storytelling"],"questions":["How was the transition made?"],"anchors":[],"rest_seconds":60}}
+                    }}));
+                    let result: Value =
+                        serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
+                    assert_eq!(result["result"]["success"], true);
+                }
                 if scenario == "agent_job_mind_writer" {
                     let memory_id = 2500 + turns;
                     send(json!({"id":memory_id,"method":"item/tool/call","params":{
@@ -308,7 +330,11 @@ fn main() {
     };
     if matches!(
         scenario.as_str(),
-        "agent_job" | "agent_job_daemon" | "agent_job_interrupt" | "agent_job_unauthenticated"
+        "agent_job"
+            | "agent_job_daemon"
+            | "agent_job_interrupt"
+            | "agent_job_unauthenticated"
+            | "agent_job_activity"
     ) || scenario.starts_with("agent_job_mind")
     {
         agent_job(&scenario);

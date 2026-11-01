@@ -318,7 +318,7 @@ impl Runtime {
                                 target,
                                 reference,
                                 id,
-                                "Only this account's own video and own root/parent comments are supported send targets",
+                                "This video or reply target does not support the requested comment",
                             ));
                         }
                         Err(error) => return Err(error.to_string()),

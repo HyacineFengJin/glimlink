@@ -7,6 +7,7 @@ mod silk;
 mod mp4;
 pub mod pictures;
 pub mod video;
+pub mod view;
 
 use serde::{Deserialize, Serialize};
 use std::{fmt, io, path::Path};
@@ -66,6 +67,11 @@ impl Default for Limits {
     }
 }
 impl Limits {
+    /// Single-frame inspection can admit a larger conservative H264 reference
+    /// estimate. Output density/time stay strictly bounded, with no audio work.
+    pub fn inspection()->Self {
+        Self {max_decoded_bytes:192*1024*1024,max_window_ms:1000,max_frames:1,..Self::default()}
+    }
     pub fn check_file(&self, path: &Path) -> Result<u64> {
         let meta = std::fs::metadata(path)?;
         if !meta.is_file() {

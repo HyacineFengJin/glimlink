@@ -99,6 +99,41 @@ model-engine children or the full 512 MiB VPS. See [memory policy](memory-policy
 
 ## Verified boundaries
 
+### Named-model Agent use (2026-10-31)
+
+Docker live tasks explicitly selected `gpt-6.1-terra` and
+`gemini-3.8-flash-medium` using the existing native subscription homes. The
+models chose Runtime tools from ordinary Chinese task descriptions, without
+HTTP/shell tools or manually supplied account aliases. QQ and Weixin were
+excluded; no platform write or login was performed.
+
+Both produced Bilibili/Tieba/X/GitHub reading briefs, read an actual comment
+image and transcribed a ten-second public speech sample. Terra's brief used
+12 successful calls; Flash used 14 calls, recovering from one unsupported
+GitHub file reference. Their 384 MiB container peaks were approximately
+234 MiB and 337 MiB. New X default-account support was exercised through a
+frozen execution profile.
+
+Both also read one fresh, opaque random-color image and four GIF frames, with
+all 30 color positions correct for each model. However, Flash's first real
+video reply described text and a character absent from the actual frames.
+The source-frame hashes matched Terra's input. A repeated Flash video task
+described the visuals correctly but overclaimed music/sound effects from an
+ASR result containing only an ellipsis. These are retained quality failures;
+successful image delivery and a completed model turn do not prove accurate
+video/audio interpretation. Terra's two video replies matched the samples
+and explicitly withheld environmental-audio claims.
+
+Video and speech tasks completed at the 384 MiB cgroup ceiling with reclaim
+events and no OOM. A 512 MiB video repeat reached approximately 425 MiB for
+Terra and 499 MiB for Flash, including native children and file cache. This
+excludes the host OS and operator desktop, and is not evidence of spare
+memory on a 512 MiB machine. Measurements are individual tasks, not a latency
+distribution or a long-running deployment acceptance. Raw results and model
+answers remain in the private, ignored `.runtime` directory.
+
+### Platform and protocol evidence
+
 - X now has a Rust web-session SDK and private local/SSH Cookie import, integrated
   into the existing 32 semantic tools. SDK tests cover current web shapes,
   identity selection, cursor/pin/media behavior and an independently calculated
@@ -182,3 +217,225 @@ The source-release audit checks candidate paths and origin policy. It does not
 read private files, publish anything, clear unresolved license questions, or
 replace a final review of public source contents. See
 [source and license boundaries](OPEN_SOURCE.md).
+
+## Lean speech and autonomous homepage reading (2026-10-31)
+
+The signed-in Bilibili homepage recommendation route now has SDK and Runtime
+acceptance, separate from the popular list. Source-preserving cached-tail and
+cross-source continuation tests passed. Live Agent tasks supplied no video URL:
+Codex 6.1 Terra and Gemini 3.8 Flash Medium each read six returned recommendations,
+selected a different candidate, sampled two ten-second windows and produced an
+evaluation using the available comments/subtitles. Terra used four tools, Flash
+eight; both stayed within the media-window budget and performed no platform write.
+Representative source frames were reviewed against their descriptions. Opinions
+and subtitles do not establish untested properties of the projects in those videos.
+
+The first compact speech implementation reduced the same ten-second speech
+container workload from about 210 MiB to 150 MiB, and a repeated large-image/speech
+workload from 321 MiB to 268 MiB. Encoder release, bounded vocabulary expansion
+and a later model-file cache hint are distinct optimizations. English and Mandarin
+samples retained exact transcripts; numerical tile/row tests compare with the
+full f32 reference. The upstream model adaptation retains Candle's dual license.
+
+Further measurements and raw Agent answers remain private under `.runtime`;
+512 MiB container results exclude the host OS. A 64 MiB Go experiment produced
+one empty final reply after media tools executed; it was not counted as complete
+and the default remains 128 MiB. No causal claim about that empty reply is made.
+QQ/Weixin were excluded and existing subscription/platform login was reused.
+
+The final standalone speech/container fixture measured about 131 MiB, and the
+four-round image/speech fixture about 209 MiB. Completed fixed-video model
+comparisons measured about 337 MiB for Terra and 424 MiB for Flash with the
+original 128 MiB Go target (before the last allocator-trim refinement), versus
+425/499 MiB before the speech changes. All these completed fixtures had no OOM.
+Final mixed-workload retained process-tree PSS was about 18 MiB versus 156 MiB.
+
+## Autonomous activity and linked context (2026-11-01)
+
+An enabled activity can wake the daemon with no pending user task. Its internal
+turn record has an empty prompt, no observed-event payload, a typed activity
+origin and a frozen execution profile. AI chooses browsing, continuation or rest
+under standing permissions; a deliverable and checkpoint update are optional.
+Ordinary queued work has priority. No additional resident model is introduced.
+
+The context layer supplies bounded current notes and recent episode excerpts.
+Older episodes expand by reference and UTF-8 byte range, preserving predecessor,
+engine, status, action IDs and the versioned checkpoint snapshot. They survive
+queue GC. Memory remains attributed data; it does not grant permissions or prove
+an action executed. Archived notes do not contain the full original tool stream.
+Platform details can be reopened through retained anchors when still available.
+
+Docker checks passed: 16 queue tests and 41 selected host/profile/memory/activity
+integration tests, including six new activity tests. These verify a daemon wake
+without a task, explicit-request priority, optional notes, native Codex-to-
+Antigravity continuity after queue GC, linked/paged detail and old checkpoint
+snapshots, bounded retention, revisions/scope, rest/budget limits, crash halt and
+receipt pins. The protocol tests use synthetic accounts with networking disabled.
+
+A separate real online trial reused native subscription login with
+`gpt-6.1-terra` then `gemini-3.8-flash-medium`. Only standing interests and Bilibili
+read capabilities were supplied; no video, search keyword, operation order or
+task objective. Terra independently searched for game/cinematic presentation,
+watched 10 seconds/four frames and rested with a short private note. Flash
+received that episode, queried the separate popular feed and search, selected
+split-screen storytelling, read three eight-second windows/twelve frames and
+comments, then saved its interests, questions, anchor and rest interval.
+No public reply, like, follow, new login, QQ or Weixin request was made.
+
+Whole-container peak was 490.6 MiB under a 512 MiB/no-swap limit, with zero
+limit-pressure events or OOM. After both native engines exited, retained
+process-tree PSS was about 23.1 MiB. This variable, richer browsing workload is
+not the earlier fixed-video comparison and leaves little space for a whole
+512 MiB machine's OS. It is not full-VPS or unattended long-term acceptance.
+
+Representative images support character close-ups, purple lighting and a
+split-screen dialogue interface. Flash's exact continuous-time/black-background
+wording goes beyond what the sparse frames establish; comment paraphrases and
+film analogies were not independently verified in this review. The final short
+checkpoint retains the broader subject/questions rather than those exact claims.
+Raw model notes are retained as model statements, not promoted to source facts.
+
+The original harness incorrectly required the first turn to save a checkpoint,
+although updates are optional. That raw trial retains its original false pass
+flag; reviewed acceptance checks the actual episode identity/preview injected
+into the second turn and the matching checkpoint revision. Both native turns
+completed. The predicate was corrected without repeating model calls. Two
+earlier pre-model startup failures (host glibc incompatibility and a measurement
+helper's profile-lock lifetime) remain separate failed records.
+
+## Source quality and region rereading (2026-11-01)
+
+The media tool surface now distinguishes source quality from output size.
+`quality=preview|480p|720p|1080p` negotiates an AVC source; actual dimensions,
+compatible variants and request satisfaction are returned. Source caches bind
+the requested quality as well as account/video/part. Frames carry source-linked
+references that can inspect the same timestamp with a source-pixel crop. Both
+`media_watch action=inspect` and `media_read reference=<frame_ref>` support this.
+Inspection does not advance a viewing session; normal quality preferences persist.
+
+PNG is the default for inspections/crops. Detail attachment delivery preserves
+the requested prepared geometry, rather than silently fitting it into the old
+64 KiB preview allowance. Actual sent dimensions, MIME, byte count and any
+preview fitting are separately reported. Larger detail returns an explicit
+unavailable/partial result so the caller can choose a tighter crop or JPEG.
+Codex tool results and both native JSONL/MCP paths remain bounded within 1 MiB.
+
+150 selected checks passed in isolated 384 MiB containers, without accounts or
+network. They cover source selection (including downgraded and portrait tracks),
+source-before-resize pixel crops, lossless video-region equality, no upscaling,
+account/time binding, non-advancing inspection, quality persistence/cache
+separation, PNG MIME and actual model geometry, oversized-detail refusal, and
+the affected Codex/Antigravity protocol and MCP paths. QQ/Weixin were excluded.
+
+Real read-only acceptance reused saved Bilibili and native Codex subscription
+state. A direct call reread the previously inspected dialogue from a 640x360
+preview source at 1920x1080, outputting a 960x324 PNG crop without further
+resizing. A separate `gpt-6.1-terra` turn chose its own crop, obtained a 941x281
+PNG from the 1920x1080 source, and correctly transcribed the target dialogue on
+manual comparison. No expected dialogue text was supplied in its prompt.
+Peak whole-container memory was 59.9 MiB for the direct pipeline and 212.1 MiB
+for this single-frame Codex task, under 512 MiB/no-swap with no pressure/OOM.
+These single-run values exclude the host OS and do not generalize to dense or
+longer HD viewing. No fresh login or platform write was made.
+
+The first real HD source exceeded the previous 96 MiB conservative reference-
+buffer estimate and was refused before decoding. Ordinary decoding retains that
+limit; single-frame/no-audio inspection permits an estimate up to 192 MiB with a
+one-second/one-output-frame envelope. The estimate is not RSS; the real workload
+above measured the resulting process/cgroup use. Two earlier model probes lacked
+the new case's isolated account copy; the model correctly omitted account and
+reported that no saved session was available. The measurement setup was fixed;
+those attempts remain failures and are not counted as reading acceptance.
+Full stream download limits, codec constraints and platform source availability
+still apply. A lower actual resolution is explicit and is never upscaled into HD.
+
+Four additional autonomous test wakes alternated `gpt-6.1-terra` and
+`gemini-3.8-flash-medium`, twice each, preserving the prior persona/notes. Task
+prompts/events were empty; these were operator-triggered test wakes, not a timer
+scheduling test. Standing instructions described media capabilities and optional
+context-aware participation, with no assigned videos or required HD/crop/action.
+An operator-authorized, durable shared ceiling allowed four Bilibili likes and
+two short text comments across engines; failure/uncertainty also spent allowance.
+Actual public effects: one like verified by readback, one duplicate-like rejection,
+no comments. Comment language quality remains unvalidated; participation was optional.
+
+Flash made six source-linked inspections across two wakes, four successfully
+attached. It recovered from two oversized PNG refusals using explicit JPEG/output
+choices. Observed sources included 1440x1080 and 1280x720; original preview
+attachments were as small as 480x270. No spatial crop was chosen. This demonstrates
+autonomous use of source rereading, not reliable detection of every small-text
+case. Terra did not request HD or crops in these wakes. One Flash wake left no
+final note, which is permitted; a final report is not an autonomous completion
+requirement. The original strict sampler result is retained alongside a reviewed
+lifecycle check; known action rejections and optional final notes are assessed
+separately from the four completed native turns.
+
+The 512 MiB/no-swap container peaked at 447.5 MiB (kernel `memory.peak`), with no
+OOM/limit event. Per-engine sampled whole-container maxima were 353.6 MiB for
+Codex and 440.2 MiB for Antigravity. Final retained process-group PSS was 45.1 MiB;
+the retained container including file cache sampled 115.2 MiB. Engines ran serially,
+and these figures exclude the host OS and do not establish a concurrent-engine
+budget. Private responses, traces, frame provenance, action evidence and samples
+remain ignored; derived account copies were removed and original subscription
+homes/accounts retained. No login or QQ/Weixin testing occurred.
+
+The trial exposed two interface explanations: duplicate-like code 65006 now
+explains the server-reported existing state without changing the rejected ledger
+or inventing verification; ordinary image quality requests now report actual
+source pixels, `request_met`, and `stream_reacquired:false`, directing video
+source upgrades to `frame_ref`. Both fixes have isolated regression coverage;
+the real experiment is preserved as run, without another public-action replay.
+34 distinct selected checks passed across autonomous lifecycle/allowance,
+profiles, Antigravity host, media workflows and engagement evidence.
+
+A separate operator-directed comment trial then ran one native wake per engine,
+using the activity slot for its durable shared allowance. This is a focused
+participation test, not evidence of unprompted commenting: the operator's role
+instructions explicitly requested watching, reading the discussion and making
+one relevant short reply when something fit. Following an existing joke/common
+phrase was allowed; no video, wording or parent comment was assigned. New likes
+and other writes were disabled, and the total allowance was two text comments,
+with one additional reservation available per engine's wake.
+
+Both engines watched actual frame samples before sending and read the selected
+discussion. Terra made a short agreement about a split-screen reading mechanic;
+Flash extended the selected comment's Tetris/Sisyphus joke using a native emote.
+Both initial sends returned acknowledged IDs but failed immediate exact readback.
+Later read-only thread queries found the exact author/text/root/parent; replaying
+the same already-Sent operation identity performed reconciliation without another
+POST, and both ledger records became Verified. The second reply also had a later
+reply in the readback; no third comment was sent. The two language samples were
+reviewed qualitatively, without claiming a general naturalness success rate.
+
+The serial 512 MiB container completed in 208.4 seconds with no OOM, but hit its
+512 MiB limit (`memory.events max=253`). Sampled process-group PSS peaked at
+418.1 MiB, and file cache was about 198 MiB near the highest sampled residency.
+This run therefore demonstrates memory pressure rather than spare VPS headroom;
+host OS memory is excluded. The focused trial's bounded normalized comment
+excerpts and actual submissions are opt-in measurement data, compiled out of the
+ordinary Runtime. Private evidence remains ignored and test account copies were
+removed after reconciliation; original accounts/subscription homes were retained.
+
+The subsequent conversation trial switched back to `gpt-6.1-terra`, copying the
+same persona, archived activity episodes and verified action records from the
+Flash comment trial. Its role requested notification-driven continuation with
+at most one additional reply; no notification ID, video, message or target was
+supplied. Terra read reply notifications, opened the returned notification_ref,
+obtained the exact root/previous own comment/new selected reply, expanded the
+prior Antigravity episode and inspected that comment's verified operation. It
+judged the other reply to finish the joke and ended without a new public action.
+This single case validates context recovery and a decision to stop, not the
+quality of an additional generated reply or unattended timer scheduling.
+
+Four fresh serial containers completed with no OOM or memory-limit event:
+the conversation trial peaked at 325.1 MiB, an empty Runtime workload at 9.5 MiB,
+a 10-second Rust Whisper workload at 117.5 MiB, and a simple Codex/modules call at
+342.2 MiB. The sampler now distinguishes anonymous/file PSS per process and
+records mapped/dirty file pages. At the simple Codex case's sampled PSS peak,
+the native engine contributed 276.4 MiB and the Runtime workload process 7.8 MiB;
+these include mapped file pages. File-backed PSS overlaps cgroup file accounting
+and must not be added a second time. These differing workloads are component
+baselines, not an additive budget, controlled attribution of the earlier peak,
+or a new worst-case bound. The earlier 512 MiB pressure finding remains valid.
+All private social account copies were removed after evidence review; native
+subscription homes and original accounts remain intact.

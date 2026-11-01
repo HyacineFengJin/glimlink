@@ -107,3 +107,13 @@ Like保留latest/total分区标签，首次输出优先latest，同ID不重复�
 宿主的 `social_bilibili` 将收藏夹、视频、动态与回复封装为账号绑定 opaque refs，续页、图片上传与回执读取都在 Runtime 内完成。每个写入工作流在第一个 POST 前持久记账；未知结果不会自动重放。收藏/点赞已有目标状态不发 POST，投币不隐式点赞。新功能已通过 Docker 合成测试；本轮没有向真实平台发布内容或消耗硬币，不能将协议测试表述为真实写入验收。
 
 协议依据：[动态发布](https://github.com/pskdje/bilibili-API-collect/blob/main/docs/dynamic/publish.md)、[动态操作](https://github.com/pskdje/bilibili-API-collect/blob/main/docs/dynamic/action.md)、[视频互动](https://github.com/pskdje/bilibili-API-collect/blob/main/docs/video/action.md)、[收藏夹](https://github.com/pskdje/bilibili-API-collect/blob/main/docs/fav/list.md)、[弹幕操作](https://github.com/pskdje/bilibili-API-collect/blob/main/docs/danmaku/action.md)。
+
+## 首页推荐
+
+`Client::home_recommendations(refresh_index, size)` 读取登录态的 Web 首页推荐接口，先通过 nav 验证现有登录态，再复用 WBI；不触发登录、补造设备指纹或降级到热门。`social_discover` 用 `source=recommended` 暴露该能力，`source=popular` 保留原有热门列表行为及默认值。
+
+返回推荐理由、推广标记、时长、统计快照和惰性封面；非视频项显式计数，单批响应限长。`source=bilibili_home_recommendations`、`signed_in_request=true` 标记请求来源，`personalization_verified=false` 不替平台保证算法个性化因果。推荐是刷新批次而非稳定分页，Runtime 对 continuation 去重并保留账号、来源与缓存尾项，禁止把推荐 continuation 改作热门。风控/认证失败按原样上抛，不自动换入口。
+
+2026-10-31 Docker 实测复用已有账号返回候选，两种原生 Agent 自主选中候选内的不同短视频，读取两个10秒窗口并结合评论/字幕评价；未发送平台互动。原始推荐与评价仅留在私有测试目录。
+
+`playback_with_quality` accepts `VideoQuality::Preview/P480/P720/P1080` and requests the corresponding source quality. It selects AVC at or below the requested short-edge resolution, preferring the highest fitting track then lower bandwidth. Preview keeps the previous lowest-compatible behavior. Selected dimensions and compatible variants are returned without treating enlarged previews as HD; resource URLs remain private to the host.

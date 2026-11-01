@@ -44,6 +44,10 @@ pub struct FrameSample {
     pub width: u32,
     pub height: u32,
     pub bytes: u64,
+    pub mime: String,
+    pub source_width: u32,
+    pub source_height: u32,
+    pub source_region: crate::view::PixelRegion,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VideoWindow {
@@ -421,6 +425,12 @@ fn validate_sps(nal: &[u8], l: &Limits) -> Result<()> {
         .checked_mul(16)
         .ok_or_else(|| MediaError::Limit("H264 height overflow".into()))?;
     let estimate = u64::from(w) * u64::from(h) * u64::from(refs + 6) * 4;
+    if estimate > l.max_decoded_bytes {
+        return Err(MediaError::Limit(format!(
+            "H264 reference-frame estimate {estimate} bytes exceeds decoder allowance {}; choose a lower source quality (source {w}x{h}, references {refs})",
+            l.max_decoded_bytes
+        )));
+    }
     l.check_image(w, h, estimate)?;
     Ok(())
 }
@@ -540,6 +550,31 @@ pub fn sample_video_window(
     max_edge: u32,
     l: &Limits,
 ) -> Result<VideoWindow> {
+    sample_video_window_view(
+        input,
+        output_dir,
+        start_ms,
+        duration_ms,
+        interval_ms,
+        max_edge,
+        &crate::view::ViewOptions::default(),
+        l,
+    )
+}
+#[allow(clippy::too_many_arguments)]
+pub fn sample_video_window_view(
+    input: &Path,
+    output_dir: &Path,
+    start_ms: u64,
+    duration_ms: u64,
+    interval_ms: u64,
+    max_edge: u32,
+    view: &crate::view::ViewOptions,
+    l: &Limits,
+) -> Result<VideoWindow> {
+    if let Some(region) = view.region {
+        region.validate()?;
+    }
     let end_ms = l.check_window(start_ms, duration_ms)?;
     if interval_ms == 0
         || duration_ms.div_ceil(interval_ms) > l.max_frames as u64
@@ -613,6 +648,7 @@ pub fn sample_video_window(
             end_ms,
             interval_ms,
             max_edge,
+            view,
             l,
         )?;
         result.gaps.extend(source_gaps);
@@ -650,6 +686,7 @@ pub fn sample_video_window(
         end_ms,
         interval_ms,
         max_edge,
+        view,
         l,
     )
 }
@@ -664,6 +701,7 @@ fn sample_packets(
     end_ms: u64,
     interval_ms: u64,
     max_edge: u32,
+    view: &crate::view::ViewOptions,
     l: &Limits,
 ) -> Result<VideoWindow> {
     let duration_ms = end_ms - start_ms;
@@ -753,9 +791,12 @@ fn sample_packets(
         let (w, h) = (vinfo.get_width(), vinfo.get_height());
         l.check_image(w as u32, h as u32, (w as u64) * (h as u64) * 3)?;
         let pixels = buffer.get_data();
-        let mut rgb = image::RgbImage::new(w as u32, h as u32);
-        for y in 0..h {
-            for x in 0..w {
+        let region = view.pixels(w as u32, h as u32)?;
+        let mut rgb = image::RgbImage::new(region.width, region.height);
+        for local_y in 0..region.height {
+            for local_x in 0..region.width {
+                let x = (local_x + region.x) as usize;
+                let y = (local_y + region.y) as usize;
                 let yy =
                     i32::from(pixels[buffer.get_offset(0) + y * buffer.get_stride(0) + x]) - 16;
                 let u = i32::from(
@@ -766,8 +807,8 @@ fn sample_packets(
                 ) - 128;
                 let clip = |n: i32| ((n + 128) >> 8).clamp(0, 255) as u8;
                 rgb.put_pixel(
-                    x as u32,
-                    y as u32,
+                    local_x,
+                    local_y,
                     image::Rgb([
                         clip(298 * yy + 409 * v),
                         clip(298 * yy - 100 * u - 208 * v),
@@ -776,16 +817,20 @@ fn sample_packets(
                 );
             }
         }
-        let edge = max_edge.min((w.max(h)) as u32);
+        let edge = max_edge.min(region.width.max(region.height));
         let image = image::DynamicImage::ImageRgb8(rgb).thumbnail(edge, edge);
-        let path = output_dir.join(format!("frame-{target:012}.jpg"));
+        let ext = match view.format {
+            OutputFormat::Jpeg => "jpg",
+            OutputFormat::Png => "png",
+        };
+        let path = output_dir.join(format!("frame-{target:012}.{ext}"));
         if let Some(old) = samples.remove(&slot) {
             output_bytes -= old.bytes;
             std::fs::remove_file(&old.path)?;
         }
         let mut frame_limits = l.clone();
         frame_limits.max_output_bytes = l.max_output_bytes.saturating_sub(output_bytes);
-        let (bytes, _) = write_image(&image, &path, OutputFormat::Jpeg, &frame_limits)?;
+        let (bytes, mime) = write_image(&image, &path, view.format, &frame_limits)?;
         output_bytes += bytes;
         cleanup.paths.push(path.clone());
         samples.insert(
@@ -797,6 +842,10 @@ fn sample_packets(
                 width: image.width(),
                 height: image.height(),
                 bytes,
+                mime,
+                source_width: w as u32,
+                source_height: h as u32,
+                source_region: region,
             },
         );
     }

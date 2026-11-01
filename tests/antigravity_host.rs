@@ -282,6 +282,52 @@ fn absent_subscription_never_calls_tools_and_can_resume_only_before_execution() 
 }
 
 #[test]
+fn native_quota_end_turn_preserves_tool_progress_without_automatic_replay() {
+    for (scenario, expected) in [
+        ("quota", "failed"),
+        ("quota-after-tool", "failed"),
+        ("quota-quote", "completed"),
+    ] {
+        let lab = Lab::new();
+        let mut runtime = lab.runtime();
+        lab.seed();
+        let queue = lab.enqueue(
+            "quota-check",
+            ctx("reader", "chat-a"),
+            "Synthetic native quota reply",
+        );
+        let report = lab.run(&mut runtime, &queue, scenario, &["runtime_memory"]);
+        assert_eq!(report.status, expected, "{report:?} {}", lab.failure());
+        assert_eq!(report.tool_calls, u32::from(scenario == "quota-after-tool"));
+        let job = queue.get("quota-check").unwrap();
+        if scenario != "quota-quote" {
+            assert_eq!(job.status, Status::Failed);
+            assert!(job.text.is_none());
+            assert!(job.error.unwrap().contains("subscription quota exhausted"));
+            if scenario == "quota-after-tool" {
+                assert_eq!(job.progress.tool_calls, 1);
+                assert_eq!(
+                    Store::open(&lab.state)
+                        .unwrap()
+                        .get(&ctx("reader", "chat-a"), "before-quota", "shared")
+                        .unwrap()
+                        .text,
+                    "synthetic completed tool"
+                );
+            }
+        } else {
+            assert!(job.text.unwrap().starts_with("Quoted provider message:"));
+        }
+        assert!(
+            queue
+                .claim_next(agent_host::now().unwrap())
+                .unwrap()
+                .is_none()
+        );
+    }
+}
+
+#[test]
 fn business_call_before_native_session_binding_is_rejected_without_memory_write() {
     let lab = Lab::new();
     let mut runtime = lab.runtime();

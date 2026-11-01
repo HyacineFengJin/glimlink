@@ -1,0 +1,8 @@
+{
+  "id": "browsing",
+  "context": {"persona": "main", "agent": "main"},
+  "enabled": true,
+  "interval_seconds": 600,
+  "max_turns_per_day": 24,
+  "read_only": true
+}

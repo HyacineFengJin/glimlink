@@ -102,7 +102,7 @@ pub fn modules() -> Vec<ModuleInfo> {
                 capability(
                     "discovery_and_discussion",
                     S::Implemented,
-                    "Popular/search metadata, snapshot statistics, cursor comments and paged replies; media variants stay lazy account-scoped assets",
+                    "Separate signed-in homepage recommendations, public popular list and search; refresh-batch provenance/deduplication, snapshot statistics, cursor comments and paged replies. Media stays lazy and account-scoped.",
                 ),
                 capability(
                     "creator_content",

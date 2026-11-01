@@ -24,6 +24,7 @@ pub(super) fn media_preferences(
     inherited: &MediaPreferences,
 ) -> Result<MediaPreferences> {
     let mut result = inherited.clone();
+    result.quality = super::media_view::quality(params, inherited.quality)?;
     for (key, target) in [
         ("transcribe", &mut result.transcribe),
         ("include_subtitles", &mut result.include_subtitles),
@@ -72,6 +73,7 @@ fn projection(session: &Session) -> Value {
         "finished":session.finished,"timeline_exhausted":session.duration_ms.is_some_and(|d|session.next_ms>=d),
         "prepared_windows":session.prepared_windows,"sampled_frames":session.sampled_frames,
         "preferences":session.preferences,"full_video_watched":false,"coverage_kind":"prepared_sampled_visual_windows",
+        "max_edge":session.max_edge,
         "note":"Window coverage records prepared samples, not every frame or proof of model understanding."})
 }
 impl Runtime {
@@ -80,6 +82,9 @@ impl Runtime {
             .get("action")
             .and_then(Value::as_str)
             .unwrap_or("window");
+        if action == "inspect" {
+            return self.inspect_video(params);
+        }
         if action == "window" {
             return self.watch_video_window(params);
         }
@@ -112,8 +117,13 @@ impl Runtime {
             )?;
             let window = number(params, "duration_ms", 10000)?;
             let interval = number(params, "interval_ms", window.div_ceil(4).max(1))?;
-            let edge = u32::try_from(number(params, "max_edge", 480)?)
-                .map_err(|_| "invalid viewing size")?;
+            let preferences = media_preferences(params, &MediaPreferences::default())?;
+            let edge = u32::try_from(number(
+                params,
+                "max_edge",
+                u64::from(preferences.quality.default_edge()),
+            )?)
+            .map_err(|_| "invalid viewing size")?;
             store.start_with_preferences(
                 &context,
                 scope,
@@ -123,7 +133,7 @@ impl Runtime {
                 window,
                 interval,
                 edge,
-                media_preferences(params, &MediaPreferences::default())?,
+                preferences,
                 crate::agent_host::now()?,
             )?
         } else {
@@ -215,6 +225,12 @@ impl Runtime {
             .as_object_mut()
             .unwrap()
             .retain(|_, value| !value.is_null());
+        request["quality"] = json!(session.preferences.quality);
+        for key in ["region", "format"] {
+            if let Some(value) = params.get(key) {
+                request[key] = value.clone();
+            }
+        }
         let result = self.with_task_scope(&session.scope, |rt| rt.watch_video_window(&request));
         let mut result = match result {
             Ok(value) => value,
@@ -422,6 +438,84 @@ mod tests {
         sync::atomic::{AtomicU64, Ordering},
     };
     static NEXT: AtomicU64 = AtomicU64::new(0);
+    #[test]
+    fn source_linked_inspection_is_cropped_lossless_account_bound_and_does_not_advance() {
+        let root = std::env::temp_dir().join(format!(
+            "inspect-view-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let mut runtime = Runtime::open(&root, "owner", None).unwrap();
+        let scope = runtime.scope(Platform::Bilibili);
+        let video = runtime
+            .store
+            .import(
+                &scope,
+                "synthetic-video",
+                "video/mp4",
+                &mut include_bytes!("../../tests/fixtures/watch-synthetic.mp4").as_slice(),
+            )
+            .unwrap();
+        let manifest_data = json!({"schema":"agent-runtime.bilibili.v1","info":{"aid":170001,"bvid":"BV17x411w7KC","duration_seconds":2},"page":1,"video":video,"audio":null});
+        let manifest = runtime
+            .store
+            .import(
+                &scope,
+                "synthetic-manifest",
+                "application/json",
+                &mut serde_json::to_vec(&manifest_data).unwrap().as_slice(),
+            )
+            .unwrap();
+        for quality in ["preview", "1080p"] {
+            runtime.locators.put(&scope,"task-video-cache",&json!({"schema":1,"quality":quality,"aid":170001,"bvid":"BV17x411w7KC","page":1,"video":video,"audio":null,"manifest":manifest,"created_at":crate::agent_host::now().unwrap()})).unwrap();
+        }
+        let target = runtime
+            .save_task_target(&TaskTarget::Video {
+                video: "BV17x411w7KC".into(),
+            })
+            .unwrap();
+        let begun=runtime.watch_video(&json!({"action":"start","target_ref":target,"duration_ms":500,"interval_ms":500,"transcribe":false,"include_subtitles":false})).unwrap();
+        let frame = begun["window"]["frames"][0]["frame_ref"].as_str().unwrap();
+        let detail=runtime.read_media(&json!({"reference":frame,"quality":"1080p","region":{"x":0.5,"y":0.5,"width":0.5,"height":0.5}})).unwrap();
+        assert_eq!(detail["window"]["frames"].as_array().unwrap().len(), 1);
+        assert_eq!(detail["window"]["frames"][0]["image"]["mime"], "image/png");
+        assert_eq!(detail["window"]["frames"][0]["width"], 32);
+        assert_eq!(detail["source_quality"]["actual"]["width"], 64);
+        assert_eq!(detail["source_quality"]["request_met"], false);
+        assert_eq!(detail["inspection"]["progress_advanced"], false);
+        assert_eq!(runtime.account, "owner");
+        let id = begun["session"]["watch_ref"].as_str().unwrap();
+        let reread = runtime
+            .watch_video(
+                &json!({"action":"inspect","watch_ref":id,"start_ms":500,"quality":"1080p"}),
+            )
+            .unwrap();
+        assert_eq!(
+            reread["inspection"]["session"]["revision"],
+            begun["session"]["revision"]
+        );
+        let status = runtime
+            .watch_video(&json!({"action":"status","watch_ref":id}))
+            .unwrap();
+        assert_eq!(
+            status["session"]["next_start_ms"],
+            begun["session"]["next_start_ms"]
+        );
+        assert_eq!(status["session"]["revision"], begun["session"]["revision"]);
+        assert!(
+            runtime
+                .watch_video(&json!({"action":"inspect","frame_ref":frame,"account":"other"}))
+                .is_err()
+        );
+        assert!(
+            runtime
+                .watch_video(&json!({"action":"inspect","frame_ref":frame,"start_ms":999}))
+                .is_err()
+        );
+        assert!(runtime.watch_video(&json!({"action":"inspect","frame_ref":frame,"region":{"x":0.9,"y":0.,"width":0.5,"height":1.}})).is_err());
+        drop(runtime);
+        fs::remove_dir_all(root).unwrap();
+    }
     fn pcm() -> Vec<u8> {
         let bytes = 32000u32 * 2;
         let mut wav = Vec::new();

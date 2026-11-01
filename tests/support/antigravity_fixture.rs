@@ -150,7 +150,10 @@ fn main() {
                     .iter()
                     .map(|v| v["name"].as_str().unwrap())
                     .collect::<Vec<_>>();
-                if scenario == "filtered" {
+                if scenario == "activity" {
+                    assert!(names.contains(&"runtime_memory"));
+                    assert!(!names.contains(&"social_send"));
+                } else if scenario == "filtered" {
                     assert_eq!(names, vec!["runtime_modules"]);
                 } else if scenario == "invalid-write" {
                     assert_eq!(names, vec!["social_send"]);
@@ -173,6 +176,36 @@ fn main() {
             "session/prompt" => {
                 assert_eq!(request["params"]["sessionId"], session);
                 let data = context(&request);
+                if scenario == "activity" {
+                    assert!(data["recent_dialogue"].is_null());
+                    assert_eq!(
+                        data["autonomous_activity"]["checkpoint"]["summary"],
+                        "CODEX_ACTIVITY_OBSERVATION"
+                    );
+                    let episode = data["autonomous_activity"]["recent_episodes"][0]["episode_id"]
+                        .as_str()
+                        .unwrap();
+                    let connection = mcp.as_mut().unwrap();
+                    let old = connection.tool(
+                        "runtime_memory",
+                        json!({"action":"activity_read","episode_id":episode,"limit":4096}),
+                    );
+                    assert_eq!(old["result"]["isError"], false);
+                    assert!(
+                        old["result"]["structuredContent"]["result"]["text"]
+                            .as_str()
+                            .unwrap()
+                            .contains("Read-only Runtime job fixture")
+                    );
+                    let save=connection.tool("runtime_memory",json!({"action":"activity_save","expected_revision":1,"checkpoint":{
+                        "summary":"AGY_CONTINUED_OBSERVATION","interests":["visual storytelling"],"questions":[],"anchors":[],"rest_seconds":120}}));
+                    assert_eq!(save["result"]["isError"], false);
+                    emit(
+                        json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":session,"update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Private autonomous continuation; no task and no public message."}}}}),
+                    );
+                    emit(json!({"jsonrpc":"2.0","id":id,"result":{"stopReason":"end_turn"}}));
+                    continue;
+                }
                 assert_eq!(
                     data["identity"],
                     json!({"persona":"shared","agent":"reader","conversation":"chat-a"})
@@ -183,6 +216,26 @@ fn main() {
                         .unwrap()
                         .is_empty()
                 );
+                if matches!(
+                    scenario.as_str(),
+                    "quota" | "quota-quote" | "quota-after-tool"
+                ) {
+                    if scenario == "quota-after-tool" {
+                        let result = mcp.as_mut().unwrap().tool("runtime_memory", json!({"action":"remember","key":"before-quota","text":"synthetic completed tool","expected_revision":0}));
+                        assert_eq!(result["result"]["isError"], false);
+                    }
+                    let notice = "⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 96h46m39s.";
+                    let text = if scenario == "quota-quote" {
+                        format!("Quoted provider message: {notice}")
+                    } else {
+                        notice.to_owned()
+                    };
+                    emit(
+                        json!({"jsonrpc":"2.0","method":"session/update","params":{"sessionId":session,"update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":text}}}}),
+                    );
+                    emit(json!({"jsonrpc":"2.0","id":id,"result":{"stopReason":"end_turn"}}));
+                    continue;
+                }
                 let connection = mcp.as_mut().unwrap();
                 if scenario == "filtered" {
                     let result = connection.tool("runtime_memory", json!({"action":"remember","key":"forbidden","text":"must-not-be-saved","expected_revision":0}));

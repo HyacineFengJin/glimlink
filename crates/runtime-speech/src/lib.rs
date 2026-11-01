@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: MIT
 //! On-demand, pure Rust CPU Whisper for bounded media windows. No background
 //! service, automatic downloads, account credentials, Python or native codec.
+#[path = "../vendor/candle-whisper/quantized_model.rs"]
+#[allow(dead_code)] // Keep upstream API/provenance; only inference is used here.
+mod compact_whisper;
 mod model_files;
+mod token_embedding;
 use candle_core::{Device, IndexOp, Tensor};
-use candle_transformers::models::whisper::{self as whisper, quantized_model::Whisper};
+use candle_transformers::models::whisper::{self as whisper};
+use compact_whisper::Whisper;
 pub use model_files::{ARTIFACTS, Artifact, ArtifactStatus, ModelStatus, install, status};
 use serde::Serialize;
 use std::path::Path;
@@ -171,7 +176,15 @@ pub fn transcribe(
         .thread_name(|i| format!("runtime-speech-{i}"))
         .build()
         .map_err(|_| "cannot create bounded speech CPU pool")?;
-    pool.install(|| transcribe_inner(dir, input, rate, channels, language))
+    let result = pool.install(|| transcribe_inner(dir, input, rate, channels, language));
+    drop(pool);
+    // Tokenizers/tensors and worker arenas have finished. Return unused GNU
+    // allocator pages now, instead of retaining them while an Agent awaits I/O.
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    unsafe {
+        let _ = libc::malloc_trim(0);
+    }
+    result
 }
 fn transcribe_inner(
     dir: &Path,
@@ -228,9 +241,11 @@ fn transcribe_inner(
     let mel = Tensor::from_vec(compact, (1, 80, frames), &device).map_err(fail)?;
     let vb = candle_transformers::quantized_var_builder::VarBuilder::from_gguf(&paths[0], &device)
         .map_err(fail)?;
+    discard_loaded_model_pages(&paths[0]);
     let mut model = Whisper::load(&vb, config.clone()).map_err(fail)?;
     drop(vb);
     let features = model.encoder.forward(&mel, true).map_err(fail)?;
+    drop(model.encoder); // Decoder retains only the encoded features, not encoder weights/caches.
     drop(mel);
     let sot = token(&tokenizer, whisper::SOT_TOKEN)?;
     let eot = token(&tokenizer, whisper::EOT_TOKEN)?;
@@ -382,6 +397,21 @@ fn transcribe_inner(
         alignment: "window_only_no_word_timestamps",
     })
 }
+// GGUF weights above are owned CPU allocations, not mapped file storage. Once
+// loaded, keeping a second ~40 MiB copy in page cache competes with a native
+// engine on the small VPS. This readonly, per-file hint is best effort; later
+// windows reload the same pinned file. It never flushes global host caches.
+#[cfg(target_os = "linux")]
+fn discard_loaded_model_pages(path: &Path) {
+    use std::os::fd::AsRawFd;
+    if let Ok(file) = std::fs::File::open(path) {
+        unsafe {
+            let _ = libc::posix_fadvise(file.as_raw_fd(), 0, 0, libc::POSIX_FADV_DONTNEED);
+        }
+    }
+}
+#[cfg(not(target_os = "linux"))]
+fn discard_loaded_model_pages(_: &Path) {}
 #[cfg(test)]
 mod tests {
     use super::*;

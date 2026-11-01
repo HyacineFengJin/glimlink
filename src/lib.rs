@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+pub mod agent_activity;
 pub mod agent_antigravity;
 pub mod agent_cli;
 pub mod agent_dialogue;
@@ -8,6 +9,7 @@ pub mod agent_mind;
 pub mod agent_profiles;
 pub mod agent_sources;
 pub mod app;
+pub mod deployment;
 pub mod engine_bridge;
 pub mod feature_state;
 pub mod mcp;

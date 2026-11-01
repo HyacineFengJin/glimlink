@@ -177,7 +177,7 @@ pub fn codex_capabilities() -> Capabilities {
     Capabilities {
         engine: "codex".into(), protocol_available: true, text: true, local_image: true,
         audio: false, video: false, dynamic_tools: true, model_input_verified: true,
-        detail: "Native 0.165.0 + gpt-6.1-sol subscription text, direct Runtime tools and actual tool-result image input passed controlled live acceptance. This is evidence for that tested route, not every model/account. Native audio/video remain unsupported.".into(),
+        detail: "Native 0.165.0 + gpt-6.1-sol/gpt-6.1-terra subscription text, direct Runtime tools and actual tool-result image input passed controlled live acceptance. This is evidence for those tested routes, not every model/account. Native audio/video remain unsupported.".into(),
     }
 }
 
@@ -188,7 +188,7 @@ impl Antigravity {
             engine: "antigravity".into(), protocol_available: true, text: true,
             local_image: false, audio: false, video: false, dynamic_tools: true,
             model_input_verified: true,
-            detail: "Native agy 1.4.11 ACP v1, dedicated Google subscription cache, shared operator persona and actual Runtime memory tools passed controlled live acceptance. Tools use a native Rust MCP bridge to the same Runtime. Direct image/audio/video inputs remain unverified and are rejected.".into(),
+            detail: "Native agy 1.4.11 ACP v1, dedicated Google subscription cache, shared operator persona and actual Runtime memory tools passed controlled live acceptance. Tools use a native Rust MCP bridge to the same Runtime. Runtime tool-result images passed opaque single-image/four-frame observation tests with gemini-3.8-flash-medium; image delivery does not establish accurate video descriptions. Direct image/audio/video inputs remain unverified and are rejected.".into(),
         }
     }
 }

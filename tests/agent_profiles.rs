@@ -130,7 +130,7 @@ fn operator_profile_persists_and_enqueue_freezes_policy_across_edits() {
     assert_eq!(selected.model.as_deref(), Some("second-model"));
     assert_eq!(
         selected.binary,
-        PathBuf::from("/cache/bin/antigravity-native")
+        agent_runtime::deployment::native_binary(EngineKind::Antigravity)
     );
     let original = Settings::default().for_job(&first).unwrap();
     assert_eq!(original.engine, EngineKind::Codex);
@@ -164,6 +164,45 @@ fn default_accounts_never_override_explicit_or_reference_owned_accounts() {
     let mut unrelated = json!({"action":"search","query":"Rust"});
     apply_default_account(&profile, "social_bilibili", &mut unrelated);
     assert!(unrelated.get("account").is_none());
+}
+
+#[test]
+fn x_profile_defaults_apply_to_real_hosts_without_rebinding_references() {
+    let lab = Lab::new();
+    let mut config = input("codex", "gpt-6.1-terra");
+    config.default_accounts.insert("x".into(), "x-main".into());
+    let profile = ProfileStore::open(&lab.0)
+        .unwrap()
+        .set("reader", config, Some(0))
+        .unwrap();
+    for reference in [
+        "https://x.com/example",
+        "https://www.x.com/example",
+        "https://twitter.com/example",
+        "https://www.twitter.com/example",
+    ] {
+        let mut params = json!({"reference":reference});
+        apply_default_account(&profile, "social_open", &mut params);
+        assert_eq!(params["account"], "x-main");
+    }
+    for mut params in [
+        json!({"reference":"https://x.com.evil.invalid/example"}),
+        json!({"reference":"https://x.com@evil.invalid/example"}),
+        json!({"target_ref":"00000000000000000000000000000000"}),
+        json!({"platform":"x","account":"other"}),
+    ] {
+        let original = params.clone();
+        apply_default_account(&profile, "social_open", &mut params);
+        assert_eq!(params, original);
+    }
+    assert_eq!(
+        ProfileStore::open(&lab.0)
+            .unwrap()
+            .get("reader")
+            .unwrap()
+            .unwrap(),
+        profile
+    );
 }
 
 #[test]

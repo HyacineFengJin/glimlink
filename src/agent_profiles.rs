@@ -199,6 +199,16 @@ pub fn apply_default_account(profile: &ExecutionProfile, tool: &str, params: &mu
                 map.get("reference").and_then(Value::as_str).and_then(|r| {
                     if r.starts_with("https://tieba.baidu.com/") {
                         Some("tieba")
+                    } else if [
+                        "https://x.com/",
+                        "https://www.x.com/",
+                        "https://twitter.com/",
+                        "https://www.twitter.com/",
+                    ]
+                    .iter()
+                    .any(|prefix| r.starts_with(prefix))
+                    {
+                        Some("x")
                     } else if r.parse::<platform_bilibili::VideoId>().is_ok()
                         || r.starts_with("https://t.bilibili.com/")
                         || r.starts_with("https://www.bilibili.com/")

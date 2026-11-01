@@ -9,6 +9,7 @@ use std::{collections::BTreeMap, fs::File, io::Read, path::Path};
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct MediaPreferences {
+    pub quality: platform_bilibili::VideoQuality,
     pub transcribe: bool,
     pub include_subtitles: bool,
     pub speech_language: Option<String>,
@@ -17,6 +18,7 @@ pub struct MediaPreferences {
 impl Default for MediaPreferences {
     fn default() -> Self {
         Self {
+            quality: platform_bilibili::VideoQuality::Preview,
             transcribe: true,
             include_subtitles: true,
             speech_language: None,
@@ -227,6 +229,9 @@ impl Sessions {
     ) -> Result<Session> {
         preferences.validate()?;
         self.edit(ctx, id, expected, now, |session| {
+            if session.preferences.quality != preferences.quality {
+                session.max_edge = preferences.quality.default_edge();
+            }
             session.preferences = preferences;
             Ok(())
         })

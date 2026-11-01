@@ -128,6 +128,53 @@ pub struct Playback {
     pub subtitles: Option<SubtitleIndex>,
     pub subtitle_error: Option<String>,
     pub preview_only: bool,
+    pub requested_quality: VideoQuality,
+    pub available_video: Vec<VideoVariant>,
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum VideoQuality {
+    #[default]
+    #[serde(rename = "preview")]
+    Preview,
+    #[serde(rename = "480p")]
+    P480,
+    #[serde(rename = "720p")]
+    P720,
+    #[serde(rename = "1080p")]
+    P1080,
+}
+impl VideoQuality {
+    pub fn qn(self) -> u32 {
+        match self {
+            Self::Preview => 16,
+            Self::P480 => 32,
+            Self::P720 => 64,
+            Self::P1080 => 80,
+        }
+    }
+    pub fn height(self) -> u32 {
+        match self {
+            Self::Preview => 360,
+            Self::P480 => 480,
+            Self::P720 => 720,
+            Self::P1080 => 1080,
+        }
+    }
+    pub fn default_edge(self) -> u32 {
+        match self {
+            Self::Preview => 480,
+            Self::P480 => 854,
+            Self::P720 => 1280,
+            Self::P1080 => 1920,
+        }
+    }
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct VideoVariant {
+    pub quality: u64,
+    pub width: u32,
+    pub height: u32,
+    pub codec: String,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SubtitleTrack {
@@ -273,8 +320,13 @@ fn track(raw: &Value) -> Result<StreamTrack> {
             .unwrap_or_default(),
     })
 }
+#[cfg(test)]
 pub(crate) fn playback(value: Value, cid: u64) -> Result<Playback> {
+    playback_quality(value, cid, VideoQuality::Preview)
+}
+pub(crate) fn playback_quality(value: Value, cid: u64, quality: VideoQuality) -> Result<Playback> {
     let mut selected = None;
+    let mut available_video = Vec::new();
     if let Some(dash) = value.get("dash") {
         let list = |field| -> Result<&[Value]> {
             let values = dash
@@ -289,7 +341,7 @@ pub(crate) fn playback(value: Value, cid: u64) -> Result<Playback> {
         };
         let videos = list("video")?;
         let audios = list("audio")?;
-        let video = videos
+        let compatible = videos
             .iter()
             .filter(|v| {
                 v.get("codecs")
@@ -297,7 +349,28 @@ pub(crate) fn playback(value: Value, cid: u64) -> Result<Playback> {
                     .is_some_and(|c| c.starts_with("avc1") || c.starts_with("avc3"))
             })
             .filter_map(|v| track(v).ok())
-            .min_by_key(|v| (if v.height == 0 { u32::MAX } else { v.height }, v.bandwidth));
+            .collect::<Vec<_>>();
+        available_video = compatible
+            .iter()
+            .map(|v| VideoVariant {
+                quality: v.quality,
+                width: v.width,
+                height: v.height,
+                codec: v.codec.clone(),
+            })
+            .collect();
+        let video = if quality == VideoQuality::Preview {
+            compatible
+                .into_iter()
+                .min_by_key(|v| (if v.height == 0 { u32::MAX } else { v.height }, v.bandwidth))
+        } else {
+            compatible
+                .into_iter()
+                .filter(|v| {
+                    v.width > 0 && v.height > 0 && v.width.min(v.height) <= quality.height()
+                })
+                .min_by_key(|v| (quality.height() - v.width.min(v.height), v.bandwidth))
+        };
         let audio = audios
             .iter()
             .filter(|v| {
@@ -341,6 +414,8 @@ pub(crate) fn playback(value: Value, cid: u64) -> Result<Playback> {
             v.as_bool()
                 .unwrap_or_else(|| v.as_u64().is_some_and(|n| n != 0))
         }),
+        requested_quality: quality,
+        available_video,
     })
 }
 pub(crate) fn subtitle_index(value: Value) -> Result<SubtitleIndex> {
@@ -419,6 +494,27 @@ pub(crate) fn subtitle_lines(value: Value) -> Result<Vec<SubtitleLine>> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn requested_quality_selects_source_not_an_upscaled_low_track() {
+        use super::*;
+        let track = |w, h, codec: &str| serde_json::json!({"baseUrl":"https://x.bilivideo.com/v.mp4","codecs":codec,"width":w,"height":h,"bandwidth":w*h,"id":80});
+        let raw = serde_json::json!({"dash":{"video":[track(640,360,"avc1"),track(1280,720,"avc1"),track(1920,1080,"avc1"),track(3840,2160,"hev1")],"audio":[track(0,0,"mp4a.40.2")]}});
+        for (quality, height) in [
+            (VideoQuality::Preview, 360),
+            (VideoQuality::P480, 360),
+            (VideoQuality::P720, 720),
+            (VideoQuality::P1080, 1080),
+        ] {
+            let p = playback_quality(raw.clone(), 1, quality).unwrap();
+            let SelectedMedia::Dash { video, .. } = p.media else {
+                panic!()
+            };
+            assert_eq!(video.height, height);
+            assert_eq!(p.available_video.len(), 3);
+        }
+        let portrait = serde_json::json!({"dash":{"video":[track(1080,1920,"avc1")],"audio":[track(0,0,"mp4a.40.2")]}});
+        assert!(playback_quality(portrait, 1, VideoQuality::P1080).is_ok());
+    }
     use super::*;
     use serde_json::json;
     #[test]

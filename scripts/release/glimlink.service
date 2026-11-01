@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: MIT
+[Unit]
+Description=Glimlink Agent Runtime
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/agent-runtime --state %h/.local/state/glimlink agent run --poll-ms 5000 --timeout-seconds 360
+WorkingDirectory=%h/.local/state/glimlink
+UMask=0077
+NoNewPrivileges=true
+Restart=on-failure
+RestartSec=15
+KillMode=control-group
+TimeoutStopSec=30
+MemoryAccounting=true
+MemoryHigh=384M
+MemoryMax=512M
+MemorySwapMax=0
+TasksMax=128
+CPUQuota=100%
+
+[Install]
+WantedBy=default.target

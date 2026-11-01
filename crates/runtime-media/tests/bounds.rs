@@ -66,6 +66,121 @@ fn actual_png_jpeg_webp_gif_decode_and_resize() {
         assert_eq!((native.width, native.height), (64, 32));
     }
 }
+
+#[test]
+fn region_reads_original_pixels_before_resize_and_reports_source_geometry() {
+    use runtime_media::{
+        pictures::prepare_image_view,
+        view::{Region, ViewOptions},
+    };
+    let dir = Temp::new();
+    let input = dir.path("source.png");
+    image::RgbImage::from_fn(120, 80, |x, y| image::Rgb([x as u8, y as u8, 200]))
+        .save(&input)
+        .unwrap();
+    let region = Region {
+        x: 0.5,
+        y: 0.,
+        width: 0.5,
+        height: 1.,
+    };
+    let output = dir.path("crop.png");
+    let p = prepare_image_view(
+        &input,
+        &output,
+        1920,
+        ViewOptions {
+            region: Some(region),
+            format: OutputFormat::Png,
+        },
+        &Limits::default(),
+    )
+    .unwrap();
+    assert_eq!((p.width, p.height), (60, 80));
+    assert_eq!(p.source_region.x, 60);
+    assert_eq!(
+        image::open(output).unwrap().to_rgb8().get_pixel(0, 0).0,
+        [60, 0, 200]
+    );
+    assert!(
+        Region {
+            x: 0.8,
+            y: 0.,
+            width: 0.5,
+            height: 1.
+        }
+        .pixels(120, 80)
+        .is_err()
+    );
+    assert!(
+        Region {
+            x: f64::NAN,
+            y: 0.,
+            width: 0.5,
+            height: 1.
+        }
+        .validate()
+        .is_err()
+    );
+}
+
+#[test]
+fn video_crop_matches_full_source_pixels_without_jpeg_or_upscaling() {
+    use runtime_media::{
+        video::sample_video_window_view,
+        view::{Region, ViewOptions},
+    };
+    let dir = Temp::new();
+    let path = dir.path("synthetic.mp4");
+    fs::write(
+        &path,
+        include_bytes!("../../../tests/fixtures/watch-synthetic.mp4"),
+    )
+    .unwrap();
+    let full = sample_video_window_view(
+        &path,
+        &dir.path("full"),
+        0,
+        1000,
+        1000,
+        1920,
+        &ViewOptions {
+            region: None,
+            format: OutputFormat::Png,
+        },
+        &Limits::default(),
+    )
+    .unwrap();
+    let crop = sample_video_window_view(
+        &path,
+        &dir.path("crop"),
+        0,
+        1000,
+        1000,
+        1920,
+        &ViewOptions {
+            region: Some(Region {
+                x: 0.5,
+                y: 0.5,
+                width: 0.5,
+                height: 0.5,
+            }),
+            format: OutputFormat::Png,
+        },
+        &Limits::default(),
+    )
+    .unwrap();
+    let f = &full.samples[0];
+    let c = &crop.samples[0];
+    assert_eq!((c.width, c.height), (32, 32));
+    assert_eq!(c.source_width, 64);
+    assert_eq!(c.mime, "image/png");
+    let expected = image::open(&f.path)
+        .unwrap()
+        .crop_imm(32, 32, 32, 32)
+        .to_rgb8();
+    assert_eq!(image::open(&c.path).unwrap().to_rgb8(), expected);
+}
 #[test]
 fn image_limits_and_partial_output_cleanup() {
     let dir = Temp::new();

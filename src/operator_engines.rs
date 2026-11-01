@@ -46,14 +46,6 @@ fn engine_name(engine: &str) -> Result<&'static str> {
         _ => Err("unsupported subscription engine".into()),
     }
 }
-fn binary_default(name: &str) -> PathBuf {
-    let adjacent = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.join(name)));
-    adjacent
-        .filter(|p| p.is_file())
-        .unwrap_or_else(|| PathBuf::from("/cache/bin").join(name))
-}
 fn failure(code: &str, message: &str) -> Value {
     json!({"status":"failed","error":{"code":code,"message":message}})
 }
@@ -64,8 +56,8 @@ impl EngineLoginManager {
     pub fn new(state: &Path) -> Result<Self> {
         Self::with_binaries(
             state,
-            binary_default("codex-native"),
-            binary_default("antigravity-native"),
+            crate::deployment::native_binary(EngineKind::Codex),
+            crate::deployment::native_binary(EngineKind::Antigravity),
         )
     }
     /// Trusted host configuration, never an operator-provided remote path.

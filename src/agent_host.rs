@@ -52,7 +52,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             engine: EngineKind::Codex,
-            binary: PathBuf::from("/cache/bin/codex-native"),
+            binary: crate::deployment::native_binary(EngineKind::Codex),
             model: None,
             turn_timeout_seconds: turn_timeout(),
             allowed_tools: None,
@@ -75,11 +75,7 @@ impl Settings {
         };
         let mut settings = self.clone();
         if settings.engine != engine {
-            settings.binary = match engine {
-                EngineKind::Codex => "/cache/bin/codex-native",
-                EngineKind::Antigravity => "/cache/bin/antigravity-native",
-            }
-            .into();
+            settings.binary = crate::deployment::native_binary(engine);
         }
         settings.engine = engine;
         settings.model = profile.model.clone();
@@ -361,7 +357,17 @@ pub(crate) fn finalize_report(
     if let Some(id) = &report.job_id {
         let job = queue.get(id)?;
         report.context_version = job.context_version.clone();
-        if job.context.conversation.is_some() && job.progress.thread_id.is_some() {
+        if job.activity.is_some() {
+            match crate::agent_activity::ActivityStore::open(runtime.state_dir())?
+                .finish(&job, now()?)
+            {
+                Ok(()) => report.history_persisted = Some(true),
+                Err(_) => {
+                    report.history_persisted = Some(false);
+                    report.context_error=Some("Activity episode could not be saved; original turn/actions remain recorded. No automatic replay.".into());
+                }
+            }
+        } else if job.context.conversation.is_some() && job.progress.thread_id.is_some() {
             match crate::agent_mind::record_job(runtime.state_dir(), &job) {
                 Ok(()) => report.history_persisted = Some(true),
                 Err(_) => {
@@ -446,7 +452,7 @@ fn run_once_inner(
     };
     runtime.set_agent_context(claim.job.context.clone())?;
     runtime.set_mind_job(Some(claim.job.id.clone()));
-    let prepared = match crate::agent_mind::assemble_with_store(runtime.state_dir(), runtime.mind_state(), &claim.job.context, &claim.job.prompt, claim.job.event.as_ref(), Some(&claim.job.id)) {
+    let prepared = match crate::agent_mind::assemble_job(runtime.state_dir(), runtime.mind_state(), &claim.job) {
         Ok(prepared) => prepared,
         Err(_) => return finish(queue,&claim,&progress,Status::Failed,None,Some("Shared identity/context is unavailable or exceeds its budget; no model turn started".into())),
     };
@@ -624,6 +630,7 @@ pub(crate) fn dispatch_tool(
         .checked_add(1)
         .ok_or_else(|| engine_error("agent tool counter exhausted"))?;
     progress.turn_id = Some(call.turn_id.clone());
+    let mut interaction_denied = None;
     if is_write(&call) {
         if !call.arguments.is_object() {
             return Err(engine_error("write arguments must be an object"));
@@ -632,7 +639,22 @@ pub(crate) fn dispatch_tool(
             call.arguments["operation_id"] =
                 json!(operation_id(&claim.job.id, &call, progress.tool_calls));
         }
-        if let Some(id) = call.arguments["operation_id"].as_str() {
+        if claim.job.activity.is_some() {
+            interaction_denied = crate::agent_activity::ActivityStore::open(runtime.state_dir())
+                .and_then(|store| {
+                    store.reserve_interaction(
+                        runtime.state_dir(),
+                        &claim.job,
+                        &call.tool,
+                        &call.arguments,
+                    )
+                })
+                .err();
+        }
+        if let Some(id) = call.arguments["operation_id"]
+            .as_str()
+            .filter(|_| interaction_denied.is_none())
+        {
             if !progress.operation_ids.iter().any(|v| v == id) {
                 progress.operation_ids.push(id.into());
             }
@@ -651,6 +673,12 @@ pub(crate) fn dispatch_tool(
     if stop.load(Ordering::Relaxed) {
         return Err(engine_error(
             "Agent stopped after recording tool identity; the tool was not executed",
+        ));
+    }
+    if let Some(detail) = interaction_denied {
+        return Ok(runtime_engine::ToolResult::text(
+            json!({"status":"not_executed","detail":detail}).to_string(),
+            false,
         ));
     }
     Ok(runtime.dispatch_engine_tool(&call))

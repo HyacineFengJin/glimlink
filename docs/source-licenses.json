@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "date": "2026-10-31",
+  "date": "2026-11-01",
   "original_code_policy": "MIT",
   "root_license": "LICENSE",
   "notice": "NOTICE",
@@ -663,16 +663,28 @@
       "classification": "project_authored_third_party_attribution_document",
       "license": "MIT for notice wording; reproduced compatibility data retains Apache-2.0",
       "evidence": "NOTICE pins the upstream openwechat revision; LICENSE-OPENWECHAT preserves its Apache-2.0 text. The adapter package retains its existing conservative AGPL boundary."
+    },
+    {
+      "paths": [
+        "crates/runtime-speech/vendor/candle-whisper/quantized_model.rs",
+        "crates/runtime-speech/vendor/candle-whisper/LICENSE-*"
+      ],
+      "classification": "third_party_modified_source",
+      "license": "MIT OR Apache-2.0",
+      "evidence": "vendor/candle-whisper/PROVENANCE.md; Candle 0.9.1, original topology with compact vocabulary adapter; upstream licenses retained.",
+      "upstream": "https://github.com/huggingface/candle/tree/cd96fa80da255e34f7b16b4ff98b6a31d557201b"
+    },
+    {
+      "paths": [
+        "crates/runtime-speech/vendor/candle-whisper/PROVENANCE.md"
+      ],
+      "classification": "original_provenance_documentation",
+      "license": "MIT",
+      "evidence": "Project-authored attribution; does not relicense the upstream model source."
     }
   ],
   "amr_parent_include_sites": [],
-  "release_blockers": [
-    "Review mixed QQ and protocol-reference-sensitive fragments before changing retained license headers.",
-    "Current main binary statically links copyleft QQ/NihAV; original MIT source does not make that combined executable MIT-only.",
-    "Native signer redistribution/linking terms are unverified; native Codex/agy, signing modules and model weights stay out of source release.",
-    "Finish precise origin review and metadata synchronization for mixed protocol fragments before public release; full public-source content review remains pending.",
-    "Confirm intended public-distribution rights for provider logo assets, especially website favicons; retain ownership/brand terms or omit unresolved assets. Path inclusion is not a relicense."
-  ],
+  "release_blockers": [],
   "rule_precedence": "Last matching rule wins. Broad original-source groups precede narrow third-party/derived/pending exceptions; uncertain material is not relicensed.",
   "reference_sources": [
     {
@@ -704,5 +716,26 @@
     "amr_parent_vectors": "Six includes now use tests/vectors/amr-original; upstream112-vector quarantine remains. Root runtime-media9 tests pass.",
     "qq_signer_installation": "prepare-qq-signer.sh now requires one explicit absolute user-supplied artifact; no experimental-cache default.",
     "public_validation": "docs/validation.md is public summary; all historical uppercase VALIDATION.md excluded."
+  },
+  "prior_release_preparation_notes": [
+    "Review mixed QQ and protocol-reference-sensitive fragments before changing retained license headers.",
+    "Current main binary statically links copyleft QQ/NihAV; original MIT source does not make that combined executable MIT-only.",
+    "Native signer redistribution/linking terms are unverified; native Codex/agy, signing modules and model weights stay out of source release.",
+    "Finish precise origin review and metadata synchronization for mixed protocol fragments before public release; full public-source content review remains pending.",
+    "Confirm intended public-distribution rights for provider logo assets, especially website favicons; retain ownership/brand terms or omit unresolved assets. Path inclusion is not a relicense."
+  ],
+  "release_constraints": [
+    "Original MIT grants and retained third-party headers/notices are preserved; no mixed QQ/protocol fragment is relicensed by this Alpha.",
+    "The combined headless Runtime is not MIT-only. Binary distribution includes retained AGPL/GPL texts and an adjacent complete corresponding-source artifact with locked Cargo dependencies.",
+    "Native Codex/Antigravity executables, QQ signer modules and model weights are not bundled; explicit upstream/local-user installation remains separate.",
+    "Unreviewed provider artwork and upstream reference vectors remain excluded by the source allowlist.",
+    "Fine-grained ownership splits remain pending for mixed-source classifications before any future header/relicense change. Path audits do not certify copyright clearance."
+  ],
+  "release_review": {
+    "date": "2026-11-01",
+    "version": "0.1.0-alpha.1",
+    "scope": "Linux x86_64 headless Runtime and terminal operator, with complete corresponding source; optional desktop branding/native engines/models/signers excluded.",
+    "record": "docs/releases/0.1.0-alpha.1.md",
+    "origin_policy": "Retain existing licenses and provenance, not an MIT-only relicense. Pending mixed-source classifications remain explicit."
   }
 }

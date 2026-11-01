@@ -31,11 +31,15 @@ Runtime 不嵌入浏览器内核、V8、Blink 或 Chromium。桌面操控端可�
 
 ## 构建与运行
 
+VPS 可使用 Linux Alpha 安装包，按[部署说明](docs/deployment.md)安装。
+包内含 Runtime、终端操控端、起步配置和用户服务；订阅引擎从上游固定版本显式安装。
+
 已验证目标为 Linux，需要 Rust 1.90+ 及系统 C 编译／链接工具。
 请在开发机编译；512 MiB VPS 的内存目标针对运行阶段。
 
 ```sh
-cargo build --release --locked -p agent-runtime -p runtime-operator
+cargo build --release --locked -p agent-runtime --bin agent-runtime
+cargo build --release --locked -p runtime-operator --bin agentctl
 ./target/release/agent-runtime tools
 ./target/release/agent-runtime --state .runtime/state mcp
 ```
@@ -46,7 +50,7 @@ cargo build --release --locked -p agent-runtime -p runtime-operator
 
 ```sh
 ./target/release/agentctl --runtime ./target/release/agent-runtime \
-  --state .runtime/state --account personal bilibili login
+  --state .runtime/state --account bili-main bilibili login
 ```
 
 继续阅读[操控端与 SSH](docs/operator-control.md)、[引擎登录](docs/engine-login.md)、

@@ -1,5 +1,43 @@
 # runtime-media
 
+### Source detail and region rereading
+
+`media_watch` accepts `quality=preview|480p|720p|1080p` independently of output
+`max_edge`. Bilibili requests that source quality and selects compatible AVC/AAC;
+responses report actual source dimensions, available compatible variants and
+`source_quality.request_met`. Account/source/decoder/download limits remain
+explicit. Requesting a large output never enlarges a low-resolution source.
+
+Every watched frame includes `frame_ref` and a ready `reread_with` call. For
+example, `media_watch` with `action=inspect`, that `frame_ref`, `quality=1080p`,
+and `region={x:0.5,y:0.7,width:0.5,height:0.3}` refetches/reuses the appropriate
+source at the original frame time and reads its bottom-right area. `media_read`
+also accepts this `frame_ref` directly. Regions use normalized coordinates of
+the full source, not of an earlier crop. Ordinary still images support the same
+region operation against their retained source pixels.
+
+Inspection returns one sample within at most a one-second search window, with
+the actual timestamp. `watch_ref` plus `start_ms` can inspect a session without
+advancing its cursor or revision. Quality persists for normal start/next/seek;
+an inspection override does not change session preferences. Stream caches bind
+account, video, part and requested quality: a preview cache cannot satisfy HD.
+
+Crops happen before resizing; video YUV-to-RGB conversion materializes only the
+selected rectangle. H264 reference frames still require full source decoding.
+Normal decoding keeps the 96 MiB conservative estimate allowance. Single-frame,
+no-audio inspection allows an estimate up to 192 MiB with output count/time
+restricted to one frame/one second; this is an admission estimate, not promised
+RSS. Oversized sources/reference sets fail explicitly rather than silently
+lowering quality. Existing byte/pixel/download limits still apply.
+
+Inspection/crops default to lossless PNG; `format=jpeg` is explicit. Model detail
+attachments share a 512 KiB raw-image allowance per reply and are never silently
+shrunk. Exceeding it requests a smaller region, fewer frames or explicit JPEG.
+Preview fitting remains compact, but `engine_input.attachment_sources` always
+reports actual sent dimensions, MIME, bytes and `resized_for_wire`. This is
+separate from prepared-frame geometry; supported engine wire frames are bounded
+at 1 MiB. All paths remain Rust and contain no browser engine.
+
 Rust 1.90 / edition 2024 的磁盘媒体处理库。库本身不联网、不访问账号、不调用外部进程；Runtime 先将实际媒体流式下载到有配额的文件，再按时间窗口调用本库。图像、音频、视频编解码均为 Rust，无浏览器内核、FFmpeg、OpenH264 或其他原生媒体库。
 
 ## 接口

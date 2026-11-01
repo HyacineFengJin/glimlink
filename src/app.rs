@@ -23,9 +23,10 @@ mod discussion;
 mod emotes;
 mod engagement;
 mod github;
-mod x;
 mod media_read;
+mod media_view;
 mod speech;
+mod x;
 pub use speech::model_directory as speech_model_directory;
 mod notification_open;
 mod notifications;
@@ -52,6 +53,10 @@ pub struct RuntimeOptions<'a> {
 }
 
 pub struct Runtime {
+    #[cfg(feature = "memory-bench")]
+    benchmark_trace: Vec<Value>,
+    #[cfg(feature = "memory-bench")]
+    benchmark_review_context: bool,
     state: PathBuf,
     account: String,
     store: ResourceStore,
@@ -245,6 +250,10 @@ impl Runtime {
         }
         let locators = crate::private_state::PrivateLocators::open(&state)?;
         Ok(Self {
+            #[cfg(feature = "memory-bench")]
+            benchmark_trace: Vec::new(),
+            #[cfg(feature = "memory-bench")]
+            benchmark_review_context: false,
             store,
             mind_state: state.clone(),
             state,
@@ -387,7 +396,17 @@ impl Runtime {
             .map_err(|e: platform_bilibili::Error| e.to_string())?;
         let info = self.bili.video_info(&id).map_err(|e| e.to_string())?;
         let page = u32::try_from(number(params, "page", 1)?).map_err(|_| "invalid page")?;
-        let playback = self.bili.playback(&info, page).map_err(|e| e.to_string())?;
+        let quality = media_view::quality(params, platform_bilibili::VideoQuality::Preview)?;
+        let playback = self
+            .bili
+            .playback_with_quality(&info, page, quality)
+            .map_err(|e| e.to_string())?;
+        let actual = match &playback.media {
+            SelectedMedia::Dash { video, .. } => {
+                json!({"quality":video.quality,"width":video.width,"height":video.height,"codec":video.codec})
+            }
+            _ => Value::Null,
+        };
         let mut batch = self.store.batch();
         let mut blocks = vec![ContentBlock::Text {
             text: info.description.clone(),
@@ -450,7 +469,7 @@ impl Runtime {
         );
         let manifest = json!({"schema":"agent-runtime.bilibili.v1","info":info,"page":page,
             "preview_only":playback.preview_only,"document":document,"video":video,"audio":audio,"subtitles":subtitle_status,
-            "model_observed":false});
+            "source_quality":{"requested":quality,"selected":actual,"available":playback.available_video},"model_observed":false});
         let resource = batch.import(
             &self.scope(Platform::Bilibili),
             "video-manifest",
@@ -566,6 +585,7 @@ impl Runtime {
                 | "bilibili.dynamic_media"
                 | "bilibili.context"
                 | "bilibili.popular"
+                | "bilibili.recommended"
                 | "bilibili.comments"
                 | "bilibili.comment_replies"
                 | "bilibili.comment_media"
@@ -688,21 +708,25 @@ impl Runtime {
             "media.image" => {
                 let (scope, source, path) = self.resolve_any(required_str(params, "resource")?)?;
                 let work = WorkDir::new(&self.state)?;
-                let output = work.path.join("image.jpg");
+                let view = media_view::view(params)?;
+                let output = work.path.join(match view.format {
+                    runtime_media::pictures::OutputFormat::Jpeg => "image.jpg",
+                    runtime_media::pictures::OutputFormat::Png => "image.png",
+                });
                 let edge = u32::try_from(number(params, "max_edge", 1280)?)
                     .map_err(|_| "invalid image size")?;
-                let prepared = runtime_media::pictures::prepare_image(
+                let prepared = runtime_media::pictures::prepare_image_view(
                     &path,
                     &output,
                     edge,
-                    runtime_media::pictures::OutputFormat::Jpeg,
+                    view,
                     &runtime_media::Limits::default(),
                 )
                 .map_err(|e| e.to_string())?;
                 let resource =
-                    self.import_output(&scope, "prepared-image", &output, "image/jpeg")?;
+                    self.import_output(&scope, "prepared-image", &output, &prepared.mime)?;
                 Ok(
-                    json!({"source":source,"image":resource,"width":prepared.width,"height":prepared.height,"model_observed":false}),
+                    json!({"source":source,"image":resource,"width":prepared.width,"height":prepared.height,"source_width":prepared.oriented_source_width,"source_height":prepared.oriented_source_height,"source_region":prepared.source_region,"upscaled":false,"model_observed":false}),
                 )
             }
             "media.audio" => {
@@ -732,14 +756,20 @@ impl Runtime {
                 let interval = number(params, "interval_ms", 1000)?;
                 let edge = u32::try_from(number(params, "max_edge", 640)?)
                     .map_err(|_| "invalid image size")?;
-                let window = runtime_media::video::sample_video_window(
+                let view = media_view::view(params)?;
+                let window = runtime_media::video::sample_video_window_view(
                     &path,
                     &work.path.join("frames"),
                     start,
                     duration,
                     interval,
                     edge,
-                    &runtime_media::Limits::default(),
+                    &view,
+                    &if params.get("_single_frame_detail") == Some(&json!(true)) {
+                        runtime_media::Limits::inspection()
+                    } else {
+                        runtime_media::Limits::default()
+                    },
                 )
                 .map_err(|e| e.to_string())?;
                 let mut batch = self.store.batch();
@@ -748,10 +778,10 @@ impl Runtime {
                     let resource = batch.import(
                         &scope,
                         "video-frame",
-                        "image/jpeg",
+                        &sample.mime,
                         &mut File::open(&sample.path).map_err(|e| e.to_string())?,
                     )?;
-                    frames.push(json!({"image":resource,"actual_pts_ms":sample.actual_pts_ms,"target_ms":sample.target_ms,"width":sample.width,"height":sample.height}));
+                    frames.push(json!({"image":resource,"actual_pts_ms":sample.actual_pts_ms,"target_ms":sample.target_ms,"width":sample.width,"height":sample.height,"source_width":sample.source_width,"source_height":sample.source_height,"source_region":sample.source_region,"upscaled":false}));
                 }
                 let audio = if let Some(id) = params.get("audio_resource").and_then(Value::as_str) {
                     let (audio_scope, audio_source, audio_path) = self.resolve_any(id)?;
@@ -841,6 +871,130 @@ impl Runtime {
 
     /// Convert tool resource references to actual image input, with an explicit attachment budget.
     pub fn call_for_engine(&mut self, method: &str, params: &Value) -> runtime_engine::ToolResult {
+        let output = self.call_for_engine_inner(method, params);
+        #[cfg(feature = "memory-bench")]
+        if self.benchmark_trace.len() < 32 {
+            use runtime_engine::ToolContent;
+            let value = output
+                .content_items
+                .iter()
+                .find_map(|item| match item {
+                    ToolContent::InputText { text } => serde_json::from_str::<Value>(text).ok(),
+                    _ => None,
+                })
+                .unwrap_or(Value::Null);
+            let inferred = params
+                .get("reference")
+                .and_then(Value::as_str)
+                .and_then(|reference| {
+                    if reference.starts_with("https://tieba.baidu.com/") {
+                        Some("tieba")
+                    } else if [
+                        "https://x.com/",
+                        "https://www.x.com/",
+                        "https://twitter.com/",
+                        "https://www.twitter.com/",
+                    ]
+                    .iter()
+                    .any(|prefix| reference.starts_with(prefix))
+                    {
+                        Some("x")
+                    } else if reference.starts_with("https://github.com/") {
+                        Some("github")
+                    } else if reference.starts_with("https://www.bilibili.com/")
+                        || reference.starts_with("BV")
+                    {
+                        Some("bilibili")
+                    } else {
+                        None
+                    }
+                })
+                .or_else(|| method.starts_with("github.").then_some("github"));
+            let inferred = inferred.map(|platform| json!(platform));
+            let platform = value
+                .pointer("/scope/platform")
+                .or_else(|| value.pointer("/page/scope/platform"))
+                .or_else(|| params.get("platform"))
+                .or(inferred.as_ref());
+            // Explicit opt-in for private comment-language review. Capture only
+            // bounded normalized excerpts, never raw requests/headers/sessions.
+            let review_context = if self.benchmark_review_context {
+                let comment = |v: &Value| {
+                    json!({"rpid":v.get("rpid"),"target_ref":v.get("target_ref"),
+                    "message":v.get("message").and_then(Value::as_str).map(|s|crate::agent_mind::clip(s,512)),
+                    "like_count":v.get("like_count"),"reply_count":v.get("reply_count"),"root":v.get("root"),"parent":v.get("parent")})
+                };
+                match method {
+                    "social.notifications" => json!({"kind":params.get("kind"),
+                        "items":value.get("items").and_then(Value::as_array).map(|xs|xs.iter().take(12).map(|v|json!({
+                            "id":v.get("id"),"created_at":v.get("created_at"),"notification_ref":v.get("notification_ref"),
+                            "source_content":v.pointer("/target/source_content").and_then(Value::as_str).map(|s|crate::agent_mind::clip(s,512)),
+                            "target_reply_content":v.pointer("/target/target_reply_content").and_then(Value::as_str).map(|s|crate::agent_mind::clip(s,512)),
+                            "message":v.pointer("/target/message").and_then(Value::as_str).map(|s|crate::agent_mind::clip(s,512))
+                        })).collect::<Vec<_>>())}),
+                    "social.discussion" => {
+                        json!({"target_ref":params.get("target_ref"),"order":params.get("order"),
+                        "root_comment":value.get("root_comment").or_else(||value.pointer("/context/root_comment")).map(&comment),
+                        "items":value.get("items").and_then(Value::as_array).map(|xs|xs.iter().take(12).map(|v|{
+                            let mut c=comment(v);c["replies"]=json!(v.get("replies").and_then(Value::as_array).map(|rs|rs.iter().take(2).map(&comment).collect::<Vec<_>>()));c
+                        }).collect::<Vec<_>>())})
+                    }
+                    "social.open" => {
+                        json!({"reference":params.get("reference"),"target_ref":value.get("target_ref"),
+                        "notification_ref":value.get("notification_ref"),"context_ref":value.get("context_ref"),"exact_target_found":value.get("exact_target_found"),
+                        "root_comment":value.pointer("/content/root_comment").map(&comment),"selected_comment":value.pointer("/content/selected_comment").map(&comment),
+                        "replies":value.pointer("/content/replies").and_then(Value::as_array).map(|xs|xs.iter().take(12).map(&comment).collect::<Vec<_>>()),
+                        "title":value.pointer("/content/info/title").or_else(||value.pointer("/content/video/title")),
+                        "description":value.pointer("/content/info/desc").and_then(Value::as_str).map(|s|crate::agent_mind::clip(s,1024))})
+                    }
+                    "social.send" => json!({"target_ref":params.get("target_ref"),
+                        "message":params.get("message").and_then(Value::as_str).map(|s|crate::agent_mind::clip(s,960)),"operation_id":params.get("operation_id")}),
+                    _ => Value::Null,
+                }
+            } else {
+                Value::Null
+            };
+            self.benchmark_trace.push(json!({"method":method,"success":output.success,"status":value.get("status"),
+                "review_context":review_context,
+                "memory_action":if method=="runtime.memory" {params.get("action")}else{None},
+                "platform":platform,"items":value.get("items").and_then(Value::as_array).map(Vec::len),
+                "target_ref_returned":value.get("target_ref").or_else(||value.pointer("/content/target_ref")).is_some(),
+                "kind":value.get("kind"),"content_observed":value.get("content_observed"),
+                "media_kind":value.get("media_kind"),"prepared":value.get("prepared"),
+                "sampled_frames":value.pointer("/window/frames").and_then(Value::as_array).map(Vec::len),
+                "speech_available":value.pointer("/speech/available"),"speech_chars":value.pointer("/speech/text").and_then(Value::as_str).map(str::len),
+                "feed_source":value.pointer("/context/source"),
+                "candidate_ids":value.get("items").and_then(Value::as_array).map(|items|items.iter().filter_map(|item|item.get("bvid").and_then(Value::as_str)).take(64).collect::<Vec<_>>()),
+                "video_id":value.pointer("/video/bvid").or_else(||value.pointer("/content/info/bvid")).or_else(||value.pointer("/info/bvid")),
+                "requested_start_ms":params.get("start_ms"),"requested_duration_ms":params.get("duration_ms"),
+                "action":params.get("action"),"caller_quality":params.get("quality"),"region":params.get("region"),
+                "inspection":value.get("inspection"),"input_frame_ref":params.get("frame_ref").or_else(||value.get("inspection").and_then(|_|params.get("reference"))),
+                "download_performed":value.pointer("/download/performed"),
+                "returned_frames":value.pointer("/window/frames").and_then(Value::as_array).map(|frames|frames.iter().take(4).map(|f|json!({"frame_ref":f.get("frame_ref"),"actual_pts_ms":f.get("actual_pts_ms"),"image":f.get("image")})).collect::<Vec<_>>()),
+                "requested_quality":value.pointer("/source_quality/requested"),"source_dimensions":value.pointer("/source_quality/actual"),
+                "quality_met":value.pointer("/source_quality/request_met"),"region_requested":params.get("region").is_some(),
+                "sent_images":value.pointer("/engine_input/attachment_sources"),
+                "attached_images":output.content_items.iter().filter(|item|matches!(item,ToolContent::InputImage{..})).count()}));
+        }
+        output
+    }
+
+    /// Metadata by default. Explicit review mode adds bounded normalized social
+    /// excerpts; credentials/raw responses are never included.
+    #[cfg(feature = "memory-bench")]
+    pub fn take_benchmark_trace(&mut self) -> Vec<Value> {
+        std::mem::take(&mut self.benchmark_trace)
+    }
+    #[cfg(feature = "memory-bench")]
+    pub fn enable_benchmark_review_context(&mut self) {
+        self.benchmark_review_context = true;
+    }
+
+    fn call_for_engine_inner(
+        &mut self,
+        method: &str,
+        params: &Value,
+    ) -> runtime_engine::ToolResult {
         use base64::Engine;
         use runtime_engine::{ToolContent, ToolResult};
         let mut value = match self.call(method, params) {
@@ -927,66 +1081,79 @@ impl Runtime {
         let mut attachments = Vec::new();
         let mut attached_ids = Vec::new();
         let mut attachment_errors = Vec::new();
-        let mut remaining_bytes = 192 * 1024;
+        let preserve_detail = value.get("inspection").is_some()
+            || params.get("region").is_some()
+            || params
+                .get("quality")
+                .and_then(Value::as_str)
+                .is_some_and(|q| q != "preview")
+            || params.get("format").and_then(Value::as_str) == Some("png")
+            || params
+                .get("max_edge")
+                .and_then(Value::as_u64)
+                .is_some_and(|n| n > 480);
+        let mut remaining_bytes = if preserve_detail {
+            512 * 1024
+        } else {
+            192 * 1024
+        };
         for id in &images {
             if attachments.len() >= 4 {
                 break;
             }
-            let prepared = (|| -> Result<(Scope, Vec<u8>)> {
-                let (scope, path) = self.store.scope_for(id).and_then(|scope| {
-                    let (resource, path) = self.store.resolve(&scope, id)?;
-                    if !resource.mime.starts_with("image/") {
-                        return Err("attachment is not an image".into());
-                    }
-                    Ok((scope, path))
-                })?;
-                let budget = (64 * 1024).min(remaining_bytes);
-                // Preparation details belong to Runtime, including fitting the
-                // engine wire budget. Do not ask the model to retry a resize.
-                let initial = read_bounded(&path, budget as u64);
-                let mut last_error = initial.as_ref().err().cloned().unwrap_or_default();
-                let mut bytes = initial.ok();
-                if bytes.is_none() && budget >= 4096 {
-                    if let Ok(work) = WorkDir::new(&self.state) {
-                        for edge in [384, 256, 192, 128, 64] {
-                            let output = work.path.join(format!("attachment-{edge}.jpg"));
-                            let resized = (|| -> Result<Vec<u8>> {
-                                runtime_media::pictures::prepare_image(
-                                    &path,
-                                    &output,
-                                    edge,
-                                    runtime_media::pictures::OutputFormat::Jpeg,
-                                    &runtime_media::Limits::default(),
-                                )
-                                .map_err(|e| e.to_string())?;
-                                read_bounded(&output, budget as u64)
-                            })();
-                            match resized {
-                                Ok(data) => {
-                                    bytes = Some(data);
-                                    break;
-                                }
-                                Err(error) => last_error = error,
+            let prepared = (|| -> Result<(Scope, Vec<u8>, u32, u32, bool)> {
+                let scope = self.store.scope_for(id)?;
+                let (resource, path) = self.store.resolve(&scope, id)?;
+                if !resource.mime.starts_with("image/") {
+                    return Err("attachment is not an image".into());
+                }
+                let limits = runtime_media::Limits::default();
+                let original = runtime_media::pictures::probe_image(&path, &limits)
+                    .map_err(|e| e.to_string())?;
+                let budget = if preserve_detail {
+                    remaining_bytes
+                } else {
+                    (64 * 1024).min(remaining_bytes)
+                };
+                match read_bounded(&path,budget as u64){
+                    Ok(data)=>return Ok((scope,data,original.width,original.height,false)),
+                    Err(_) if preserve_detail=>return Err("Detail image exceeds the bounded attachment allowance; choose a smaller source region, fewer frames, or explicitly format=jpeg. No detail downscaling was performed.".into()),
+                    Err(_)=>(),
+                }
+                if budget >= 4096 {
+                    let work = WorkDir::new(&self.state)?;
+                    for edge in [384, 256, 192, 128, 64] {
+                        let output = work.path.join(format!("attachment-{edge}.jpg"));
+                        if let Ok(image) = runtime_media::pictures::prepare_image(
+                            &path,
+                            &output,
+                            edge,
+                            runtime_media::pictures::OutputFormat::Jpeg,
+                            &limits,
+                        ) {
+                            if let Ok(data) = read_bounded(&output, budget as u64) {
+                                return Ok((scope, data, image.width, image.height, true));
                             }
                         }
                     }
                 }
-                if let Some(data) = bytes {
-                    Ok((scope, data))
-                } else {
-                    Err(format!("image input unavailable: {last_error}"))
-                }
+                Err("Image cannot fit the preview attachment allowance".into())
             })();
             match prepared {
-                Ok((scope, data)) => {
+                Ok((scope, data, width, height, resized)) => {
+                    let mime = if data.starts_with(b"\x89PNG\r\n\x1a\n") {
+                        "image/png"
+                    } else {
+                        "image/jpeg"
+                    };
                     remaining_bytes -= data.len();
+                    attached_ids.push(json!({"resource":id,"scope":scope,"width":width,"height":height,"mime":mime,"bytes":data.len(),"resized_for_wire":resized,"detail_preserved":preserve_detail}));
                     attachments.push(ToolContent::InputImage {
                         image_url: format!(
-                            "data:image/jpeg;base64,{}",
+                            "data:{mime};base64,{}",
                             base64::engine::general_purpose::STANDARD.encode(data)
                         ),
                     });
-                    attached_ids.push(json!({"resource":id,"scope":scope}));
                 }
                 Err(error) => attachment_errors.push(
                     json!({"resource":id,"error":error.chars().take(512).collect::<String>()}),
@@ -1002,7 +1169,7 @@ impl Runtime {
         }
         value["engine_input"] = json!({"image_resources_attached":attached_ids.iter().map(|v|v["resource"].clone()).collect::<Vec<_>>(),"attachment_sources":attached_ids,"prepared_image_count":images.len(),
             "attachment_errors":attachment_errors,"omitted_by_count_budget":images.len().saturating_sub(4),
-            "note":"Only listed image resources enter this tool response as real images; Runtime may downsize them to fit the attachment budget. Select another media_read window for additional frames. Audio is not accepted by this Codex route."});
+            "detail_preserved":preserve_detail,"note":"Only listed images entered the model. attachment_sources reports actual sent dimensions/MIME/bytes. Detail reads are never silently resized; on an allowance error choose a smaller region or explicitly JPEG. Compact previews may be downsized with resized_for_wire=true. Audio is not accepted by this image route."});
         let mut content_items = vec![ToolContent::InputText {
             text: value.to_string(),
         }];

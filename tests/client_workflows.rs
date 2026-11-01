@@ -323,7 +323,7 @@ fn an_expired_asset_cache_cannot_pass_old_pixels_as_a_new_successful_read() {
 }
 
 #[test]
-fn a_large_picture_is_resized_by_runtime_before_its_first_engine_reply() {
+fn a_large_preview_reports_its_actual_wire_dimensions() {
     let lab = Lab::new();
     let (store, _) = lab.stores();
     let file = lab.0.join("detailed.png");
@@ -343,7 +343,7 @@ fn a_large_picture_is_resized_by_runtime_before_its_first_engine_reply() {
     let result = call(
         &mut runtime,
         "media_read",
-        json!({"reference":picture.id,"max_edge":1280}),
+        json!({"reference":picture.id,"quality":"preview"}),
     );
     assert!(result.success);
     assert_eq!(image_count(&result), 1);
@@ -360,10 +360,102 @@ fn a_large_picture_is_resized_by_runtime_before_its_first_engine_reply() {
         .unwrap();
     assert!(bytes.len() <= 64 * 1024);
     assert!(bytes.starts_with(b"\xff\xd8\xff"));
+    assert_eq!(data(&result)["engine_input"]["detail_preserved"], false);
+    assert!(
+        data(&result)["engine_input"]["attachment_sources"][0]["width"]
+            .as_u64()
+            .unwrap()
+            <= 480
+    );
     assert_eq!(
         data(&result)["engine_input"]["attachment_errors"],
         json!([])
     );
+}
+
+#[test]
+fn cached_image_quality_request_reports_its_pixel_limit_without_claiming_hd() {
+    let lab = Lab::new();
+    let (store, _) = lab.stores();
+    let file = lab.0.join("preview.png");
+    png(&file);
+    let original = resource(&store, &scope(), &file, "image/png");
+    drop(store);
+    let mut rt = Runtime::open(&lab.state(), "public", None).unwrap();
+    let result = call(
+        &mut rt,
+        "media_read",
+        json!({"reference":original.id,"quality":"1080p"}),
+    );
+    assert!(result.success);
+    let v = data(&result);
+    assert_eq!(v["source_quality"]["request_met"], false);
+    assert_eq!(v["source_quality"]["stream_reacquired"], false);
+    assert_eq!(v["source_quality"]["actual"]["width"], 16);
+    assert_eq!(v["source_quality"]["selection"], "existing_image_pixels");
+    assert!(
+        v["source_quality"]["note"]
+            .as_str()
+            .unwrap()
+            .contains("frame_ref")
+    );
+    assert_eq!(v["engine_input"]["attachment_sources"][0]["width"], 16);
+    assert_eq!(image_count(&result), 1);
+}
+
+#[test]
+fn detail_png_is_sent_losslessly_and_oversize_detail_is_not_silently_shrunk() {
+    let lab = Lab::new();
+    let (store, _) = lab.stores();
+    let mut refs = Vec::new();
+    for height in [100, 1024] {
+        let file = lab.0.join(format!("detail-{height}.png"));
+        let image = image::RgbImage::from_fn(1024, height, |x, y| {
+            let mut n = x.wrapping_mul(0x9e3779b1) ^ y.wrapping_mul(0x85ebca6b);
+            n ^= n >> 16;
+            n = n.wrapping_mul(0x7feb352d);
+            n ^= n >> 15;
+            image::Rgb([n as u8, (n >> 8) as u8, (n >> 16) as u8])
+        });
+        image.save(&file).unwrap();
+        refs.push(resource(&store, &scope(), &file, "image/png"));
+    }
+    drop(store);
+    let mut rt = Runtime::open(&lab.state(), "public", None).unwrap();
+    let result = call(
+        &mut rt,
+        "media_read",
+        json!({"reference":refs[0].id,"quality":"1080p","format":"png"}),
+    );
+    assert!(result.success);
+    let v = data(&result);
+    assert_eq!(v["engine_input"]["attachment_sources"][0]["width"], 1024);
+    assert_eq!(v["engine_input"]["attachment_sources"][0]["height"], 100);
+    assert_eq!(
+        v["engine_input"]["attachment_sources"][0]["resized_for_wire"],
+        false
+    );
+    let url = result
+        .content_items
+        .iter()
+        .find_map(|v| match v {
+            ToolContent::InputImage { image_url } => Some(image_url),
+            _ => None,
+        })
+        .unwrap();
+    let raw = base64::engine::general_purpose::STANDARD
+        .decode(url.strip_prefix("data:image/png;base64,").unwrap())
+        .unwrap();
+    assert!(raw.len() > 64 * 1024);
+    assert_eq!(image::load_from_memory(&raw).unwrap().width(), 1024);
+    let denied = call(
+        &mut rt,
+        "media_read",
+        json!({"reference":refs[1].id,"quality":"1080p","format":"png"}),
+    );
+    assert!(!denied.success);
+    assert_eq!(image_count(&denied), 0);
+    assert_eq!(data(&denied)["status"], "input_unavailable");
 }
 
 #[test]

@@ -69,6 +69,17 @@ impl Options {
                         args: vec!["help".into()],
                     });
                 }
+                "--version" => {
+                    return Ok(Self {
+                        state,
+                        account,
+                        cookie,
+                        tieba_bduss,
+                        context,
+                        mind_state,
+                        args: vec!["version".into()],
+                    });
+                }
                 _ => return Err("unknown global option".into()),
             }
         }
@@ -194,7 +205,8 @@ fn engine(options: &Options, args: &[String]) -> Result<()> {
     }
     private_dir(&options.state)?;
     let state = options.state.canonicalize().map_err(|e| e.to_string())?;
-    let mut binary = PathBuf::from("/cache/bin/codex-native");
+    let mut binary =
+        agent_runtime::deployment::native_binary(agent_runtime::agent_host::EngineKind::Codex);
     let mut engine_kind = agent_runtime::agent_host::EngineKind::Codex;
     let mut binary_selected = false;
     let mut home_selected = false;
@@ -248,7 +260,9 @@ fn engine(options: &Options, args: &[String]) -> Result<()> {
     private_dir(&workspace)?;
     if engine_kind == agent_runtime::agent_host::EngineKind::Antigravity {
         if !binary_selected {
-            binary = "/cache/bin/antigravity-native".into();
+            binary = agent_runtime::deployment::native_binary(
+                agent_runtime::agent_host::EngineKind::Antigravity,
+            );
         }
         if !home_selected {
             home = state.join("antigravity");
@@ -452,6 +466,8 @@ fn run() -> Result<()> {
     let args = &options.args;
     let command = args.first().map(String::as_str).unwrap_or("help");
     match command {
+        "version" => emit(&json!({"name":"Glimlink","version":env!("CARGO_PKG_VERSION")})),
+        "doctor" => emit(&agent_runtime::deployment::doctor(&options.state)),
         "help" => {
             println!(
                 "Agent Runtime\n  operator serve                 Private local/SSH control stdio\n  speech status|install           Optional pinned Rust Whisper model\n  modules\n  tools\n  serve                          Compatibility JSONL Runtime routes\n  mcp                            Standard MCP stdio task tools\n  call METHOD JSON\n  import FILE MIME\n  content html|json FILE [--pointer /path]\n  bili videos [--page N --limit N]\n  bili media ASSET\n  bili unread\n  bili notifications reply|at|like [--limit N --cursor-id N --cursor-time N]\n  bili import-login PRIVATE_FILE | login|login-poll|status|me|favorites\n  bili inspect|fetch BV_OR_AV [--page N]\n  tieba posts [--kind thread|reply --page N --limit N]\n  tieba notifications reply|at|like [--page N --limit N]\n  tieba import-login PRIVATE_FILE | login|login-poll|status|me\n  tieba thread THREAD [--page N]\n  tieba comments THREAD --post POST [--page N]\n  tieba media ASSET\n  qq password-login PRIVATE_JSON [--resume-from-disk] | import-login PRIVATE_JSON\n  qq import DIRECTORY|login|qr [PROFILE]|status|signer-check\n  github login TOKEN_FILE|status\n  x import-login PRIVATE_JSON|status|me|open URL_OR_HANDLE|posts [--limit N]\n  weixin login|login-poll|status|resume|contacts|receive|inbox\n  weixin media ASSET\n  media image|audio|video RESOURCE [--start-ms N --duration-ms N --interval-ms N --audio RESOURCE]\n  resource read|list|drop [RESOURCE] [--offset N --limit N --encoding utf8|base64]\n  asset list [--offset N --limit N]\n  asset drop ASSET --kind bilibili-media|tieba-media|weixin-media|weixin-payload\n  agent status|jobs|job|enqueue|watch|watches|resume|cancel|gc|run\n  mind status|context|persona|role|remember|forget|search|conversation-reset\n  engine capabilities|probe|run [--engine codex|antigravity --binary PATH --home PATH --workspace PATH --prompt TEXT --image RESOURCE --tools NAME,...]\nGlobal options precede the command: --state PATH --account ALIAS --persona ID --agent ID --conversation ID --mind-state ABS_PATH --bili-cookie-file PATH --tieba-bduss-file PATH"

@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "date": "2026-10-31",
+  "date": "2026-11-01",
   "method": "Cargo 1.90 metadata --locked --offline --format-version 1; Cargo.lock registry checksums",
-  "scope": "Resolved external workspace packages, including optional and target-specific dependencies. This is metadata, not a final binary SBOM or a substitute for source license/notice files. Vendored/path implementations are classified separately in source-licenses.json. Upstream metadata is retained without a project relicense.",
+  "scope": "Resolved external workspace packages including optional/target-specific dependencies. Metadata is not an executable license or a replacement for retained texts. The corresponding-source release also vendors these packages. Path/translated implementations are classified separately.",
   "packages": [
     {
       "name": "adler2",

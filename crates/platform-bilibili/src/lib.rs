@@ -31,7 +31,10 @@ pub use comments::{
     CommentReceipt, CommentReplyPage, CommentTarget, PreparedComment, VideoComment,
 };
 pub use context::{UploaderInfo, UploaderOfficial, VideoTag, VideoTagCounts};
-pub use discovery::{PopularVideoPage, SearchDuration, SearchOrder, SearchVideo, VideoSearchPage};
+pub use discovery::{
+    PopularVideoPage, RecommendationPage, RecommendedVideo, SearchDuration, SearchOrder,
+    SearchVideo, VideoSearchPage,
+};
 pub use dynamics::{
     DynamicAuthor, DynamicFeedPage, DynamicItem, DynamicMajor, DynamicMedia, DynamicMediaKind,
     DynamicOriginalReference, DynamicRichNode, DynamicStats,
@@ -44,7 +47,7 @@ pub use http::{Config, DownloadReceipt, validate_resource_url};
 pub use id::VideoId;
 pub use model::{
     MediaResource, Owner, Page, Playback, SelectedMedia, StreamTrack, SubtitleIndex, SubtitleLine,
-    SubtitleTrack, VideoInfo, VideoStats,
+    SubtitleTrack, VideoInfo, VideoQuality, VideoStats, VideoVariant,
 };
 pub use notification_context::{
     NotificationCommentLocator, NotificationContext, NotificationContextStatus,
@@ -173,6 +176,16 @@ impl Client {
     /// fiction: DASH tracks remain separate; progressive fragments remain ordered.
     /// Page is one-based, like the website's `?p=` parameter.
     pub fn playback(&mut self, video: &VideoInfo, page: u32) -> Result<Playback> {
+        self.playback_with_quality(video, page, VideoQuality::Preview)
+    }
+    /// Request a bounded source quality, still selecting only AVC/AAC. A server
+    /// downgrade is returned as actual track metadata, never labeled upscaled HD.
+    pub fn playback_with_quality(
+        &mut self,
+        video: &VideoInfo,
+        page: u32,
+        quality: VideoQuality,
+    ) -> Result<Playback> {
         let part = video
             .pages
             .iter()
@@ -181,21 +194,21 @@ impl Client {
         let mut params = [
             ("bvid", video.bvid.clone()),
             ("cid", part.cid.to_string()),
-            ("qn", "16".into()),
+            ("qn", quality.qn().to_string()),
             ("fnval", "16".into()),
             ("fnver", "0".into()),
             ("fourk", "0".into()),
             ("gaia_source", "view-card".into()),
         ];
         let data = self.signed_get("/x/player/wbi/playurl", &params)?;
-        let mut playback = match model::playback(data, part.cid) {
+        let mut playback = match model::playback_quality(data, part.cid, quality) {
             Ok(playback) => playback,
             Err(Error::NoCompatibleMedia) => {
                 // A codec/format mismatch gets one MP4 request, never a retry of
                 // a platform rejection or challenge.
                 params[3].1 = "1".into();
                 let data = self.signed_get("/x/player/wbi/playurl", &params)?;
-                model::playback(data, part.cid)?
+                model::playback_quality(data, part.cid, quality)?
             }
             Err(error) => return Err(error),
         };

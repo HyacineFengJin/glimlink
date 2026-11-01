@@ -82,6 +82,7 @@ pub struct VideoSearchPage {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PopularVideoPage {
+    pub source: &'static str,
     pub items: Vec<SearchVideo>,
     pub page: u32,
     pub page_size: u32,
@@ -90,7 +91,58 @@ pub struct PopularVideoPage {
     pub media_downloaded: bool,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RecommendedVideo {
+    #[serde(flatten)]
+    pub video: SearchVideo,
+    pub recommendation_reason: Option<String>,
+    pub promoted: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RecommendationPage {
+    pub items: Vec<RecommendedVideo>,
+    pub source: &'static str,
+    pub signed_in_request: bool,
+    pub personalization_verified: bool,
+    pub refresh_index: u32,
+    pub requested_size: u32,
+    pub skipped_non_video_items: usize,
+    pub has_more: Option<bool>,
+    pub next_page: Option<u32>,
+    pub pagination: &'static str,
+    pub media_downloaded: bool,
+}
+
 impl Client {
+    /// The web homepage feed, not the public popular list. A refresh is not a
+    /// stable page. Existing Cookie/WBI state is reused; challenges never cause
+    /// fabricated device data, another endpoint, or automatic login.
+    pub fn home_recommendations(
+        &mut self,
+        refresh_index: u32,
+        size: u32,
+    ) -> Result<RecommendationPage> {
+        if !(1..=100).contains(&refresh_index) || !(1..=20).contains(&size) {
+            return Err(Error::InvalidPage);
+        }
+        if self.transport.cookie_header().is_none() {
+            return Err(Error::LoginRequired);
+        }
+        self.current_user()?; // Do not label an expired Cookie's public fallback as signed in.
+        let data = self.signed_get(
+            "/x/web-interface/wbi/index/top/feed/rcmd",
+            &[
+                ("fresh_type", "3".into()),
+                ("version", "1".into()),
+                ("ps", size.to_string()),
+                ("fresh_idx", refresh_index.to_string()),
+                ("fresh_idx_1h", refresh_index.to_string()),
+                ("brush", (refresh_index - 1).to_string()),
+                ("homepage_ver", "1".into()),
+            ],
+        )?;
+        recommendation_page(data, refresh_index, size)
+    }
     /// Search is one signed request after any necessary read-only WBI key read.
     /// A normal saved cookie may lack buvid3: challenges are returned as errors,
     /// without synthesizing a fingerprint or switching to another endpoint.
@@ -107,7 +159,7 @@ impl Client {
     }
 
     /// Explicit independent discovery, never an automatic fallback for search.
-    /// Ranking may be personalized when this client has a cookie.
+    /// This endpoint is distinct from the homepage feed, even with a Cookie.
     pub fn popular_videos(&self, page: u32, page_size: u32) -> Result<PopularVideoPage> {
         validate_popular_page(page, page_size)?;
         let url =
@@ -118,6 +170,69 @@ impl Client {
             page_size,
         )
     }
+}
+
+fn recommendation_page(data: Value, refresh_index: u32, size: u32) -> Result<RecommendationPage> {
+    detect_challenge(&data)?;
+    let raw = data
+        .get("item")
+        .and_then(Value::as_array)
+        .ok_or(Error::Schema("homepage item list"))?;
+    if raw.len() > 64 {
+        return Err(Error::Schema("homepage batch exceeds bound"));
+    }
+    let mut items = Vec::new();
+    let mut skipped = 0;
+    for item in raw {
+        if !matches!(
+            item.get("goto").and_then(Value::as_str),
+            Some("av" | "video")
+        ) {
+            skipped += 1;
+            continue;
+        }
+        let normalized = serde_json::json!({"aid":item.get("id").or_else(||item.get("aid")),"bvid":item.get("bvid"),
+            "title":item.get("title"),"desc":item.get("desc"),"pic":item.get("pic"),
+            "duration":item.get("duration"),"pubdate":item.get("pubdate"),"owner":item.get("owner"),"stat":item.get("stat")});
+        let video = popular_video(&normalized)?;
+        if items.iter().any(|previous: &RecommendedVideo| {
+            previous.video.aid == video.aid || previous.video.bvid == video.bvid
+        }) {
+            continue;
+        }
+        let reason = item
+            .pointer("/rcmd_reason/content")
+            .and_then(Value::as_str)
+            .filter(|s| s.len() <= 2048)
+            .map(str::to_owned);
+        let promoted = item
+            .get("is_ad")
+            .is_some_and(|v| v == true || v.as_u64().is_some_and(|v| v != 0))
+            || item.get("ad_info").is_some_and(|v| !v.is_null());
+        items.push(RecommendedVideo {
+            video,
+            recommendation_reason: reason,
+            promoted,
+        });
+    }
+    let next_page = if !items.is_empty() && refresh_index < 100 {
+        Some(refresh_index + 1)
+    } else {
+        None
+    };
+    Ok(RecommendationPage {
+        items,
+        source: "bilibili_home_recommendations",
+        signed_in_request: true,
+        personalization_verified: false,
+        refresh_index,
+        requested_size: size,
+        skipped_non_video_items: skipped,
+        has_more: None,
+        next_page,
+        pagination: "refresh_batches_not_stable_pages",
+        media_downloaded: false,
+    })
 }
 
 fn search_params(
@@ -389,6 +504,7 @@ fn popular_page(data: Value, page: u32, page_size: u32) -> Result<PopularVideoPa
         items.push(video);
     }
     Ok(PopularVideoPage {
+        source: "bilibili_popular",
         items,
         page,
         page_size,
@@ -402,6 +518,34 @@ fn popular_page(data: Value, page: u32, page_size: u32) -> Result<PopularVideoPa
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn homepage_provenance_filters_non_video_and_preserves_reasons() {
+        let row = serde_json::json!({"goto":"av","id":170001,"bvid":"BV17x411w7KC","title":"synthetic home item","duration":30,
+            "owner":{"mid":42,"name":"synthetic"},"stat":{"view":5},"pic":"https://i0.hdslb.com/bfs/archive/test.jpg", "rcmd_reason":{"content":"synthetic reason"}});
+        let parsed = super::recommendation_page(
+            serde_json::json!({"item":[row.clone(),{"goto":"live"},row]}),
+            1,
+            20,
+        )
+        .unwrap();
+        assert_eq!(parsed.items.len(), 1);
+        assert_eq!(parsed.skipped_non_video_items, 1);
+        assert_eq!(
+            parsed.items[0].recommendation_reason.as_deref(),
+            Some("synthetic reason")
+        );
+        assert_eq!(parsed.source, "bilibili_home_recommendations");
+        assert!(parsed.signed_in_request);
+        assert!(!parsed.personalization_verified);
+        assert_eq!(parsed.has_more, None);
+        assert_eq!(parsed.next_page, Some(2));
+        assert!(!parsed.media_downloaded);
+        assert!(super::recommendation_page(serde_json::json!({"list":[]}), 1, 20).is_err());
+        assert!(matches!(
+            super::recommendation_page(serde_json::json!({"item":[],"is_risk":true}), 1, 20),
+            Err(crate::Error::RiskControl(_))
+        ));
+    }
     use super::*;
     use serde_json::json;
     fn video() -> Value {

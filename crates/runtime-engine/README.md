@@ -27,7 +27,7 @@ assert_eq!(result.status, TurnStatus::Completed);
 
 `turn_start_with_tools(thread, inputs, event_callback, tool_callback)` 将已注册且 thread/turn 匹配的 `item/tool/call` 路由到调用者。`ToolCall` 包括工具名、参数和 call ID；重复 call ID 不会再次执行。工具回调必须自行限制网络和其他 I/O 的时间，不能在同步回调里无限等待。
 
-`ToolResult` 的 `content_items` 可以返回 `InputText{text}` 或 `InputImage{image_url}`。图片必须是带真实字节的 JPEG/PNG/WebP base64 data URL；不接受普通远程 URL、音频或空资源占位。仅检查格式签名，媒体解码和图像有效性仍由上游媒体模块负责。默认单图解码后 256 KiB、完整结果 JSON 384 KiB、每回合 32 次请求；所有限制可以在 `CodexConfig` 内显式配置。
+`ToolResult` 的 `content_items` 可以返回 `InputText{text}` 或 `InputImage{image_url}`。图片必须是带真实字节的 JPEG/PNG/WebP base64 data URL；不接受普通远程 URL、音频或空资源占位。仅检查格式签名，媒体解码和图像有效性仍由上游媒体模块负责。默认单图原始编码字节 512 KiB、完整结果 JSON 896 KiB、每回合 32 次请求；所有限制可以在 `CodexConfig` 内显式配置。
 
 `thread_resume_with_tools` 仅重新绑定本地工具白名单，须与保存的线程定义一致。0.165.0 的 resume schema 没有替换 `dynamicTools` 的字段；服务端恢复它保存的定义。普通 `turn_start` 没有工具执行回调，工具不会借助 shell 绕行。
 
@@ -56,6 +56,8 @@ JSONL 单行、累计接收、输入、文本输出、工具结果、排队事�
 
 实测原生参数为 `_meta.disableBuiltInTools=true` 和 `_meta.antigravity.systemPrompt.append=人格/岗位指令`；顶层同名禁用字段会被忽略。`--include-default-customizations=false` 关闭默认组件，`--disable-telemetry` 与禁止自更新环境显式设置。原生 `--app-data-dir` 只能为相对名字，此处为antigravity-cli，位于绝对gemini-dir内，与普通CLI登录缓存一致。配置只allow `mcp(runtime/*)`，原生命令/文件/URL拒绝；ACP客户端的权限、文件和终端请求也会被拒绝。
 
-ACP输入仅接受已验收文字，直接图片/音频/视频明确Unsupported；只收集本session的agent_message_chunk，不把思考、用户回显或工具遥测当作回答。stopReason、请求ID、事件及输出均有检查/上限；JSONL默认512KiB、累计8MiB、输入128KiB、输出256KiB，超时/坏协议终止进程。工具结果图片需另行真实验收，不由ACP初始化的media字段推定。
+ACP输入仅接受已验收文字，直接图片/音频/视频明确Unsupported；只收集本session的agent_message_chunk，不把思考、用户回显或工具遥测当作回答。stopReason、请求ID、事件及输出均有检查/上限；JSONL默认1MiB、累计8MiB、输入128KiB、输出256KiB，超时/坏协议终止进程。工具结果图片需另行真实验收，不由ACP初始化的media字段推定。
 
 Go运行时使用GOMEMLIMIT=128MiB、GOGC=60；软目标不包含所有原生/映射内存，完整进程与文件缓存仍由外层384MiB容器及VPS预算约束。两套引擎退出后均对其只读ELF做POSIX_FADV_DONTNEED提示，减少串行切换时保留的文件缓存；内核可忽略建议。离线协议、MCP桥与真实订阅验收范围见[验收记录](../../docs/validation.md)。
+
+Detail-image tool replies use the same bounded transport: Codex defaults to a 1 MiB JSONL frame, 896 KiB encoded tool-result allowance and 512 KiB raw image allowance; Antigravity JSONL and the Rust MCP bridge also cap frames at 1 MiB. These are on-demand message limits, not additional resident services. Runtime reports actual sent image geometry and refuses oversized detail instead of silently reducing it.

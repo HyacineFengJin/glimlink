@@ -8,6 +8,23 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 static NEXT_SOCKET: AtomicU64 = AtomicU64::new(0);
 
+// Native ACP can report end_turn for this provider-generated quota notice.
+// Recognize only the observed standalone notice, never a mention inside a reply.
+fn subscription_quota_notice(text: &str) -> bool {
+    let Some(reset) = text.trim().strip_prefix("⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in ") else {
+        return false;
+    };
+    let Some(duration) = reset.strip_suffix('.') else {
+        return false;
+    };
+    !duration.is_empty()
+        && duration.len() <= 48
+        && duration.bytes().any(|b| b.is_ascii_digit())
+        && duration
+            .bytes()
+            .all(|b| b.is_ascii_digit() || matches!(b, b'h' | b'm' | b's'))
+}
+
 /// Cached-login probe; no model prompt or authentication flow is started.
 pub fn probe(mut config: AntigravityConfig) -> Result<serde_json::Value> {
     let parent = config
@@ -143,10 +160,7 @@ fn run_inner(
     }
     runtime.set_agent_context(claim.job.context.clone())?;
     runtime.set_mind_job(Some(claim.job.id.clone()));
-    let prepared = match crate::agent_mind::assemble_with_store(
-        runtime.state_dir(), runtime.mind_state(), &claim.job.context,
-        &claim.job.prompt, claim.job.event.as_ref(), Some(&claim.job.id),
-    ) {
+    let prepared = match crate::agent_mind::assemble_job(runtime.state_dir(),runtime.mind_state(),&claim.job) {
         Ok(value) => value,
         Err(_) => return agent_host::finish(queue, &claim, &progress, Status::Failed, None,
             Some("Shared identity/context is unavailable or exceeds its budget; no model turn started".into())),
@@ -265,6 +279,10 @@ fn run_inner(
                         .as_deref()
                         .unwrap_or("Agent stopped during model execution"),
                 );
+            }
+            if subscription_quota_notice(&output.text) {
+                return agent_host::finish(queue, &claim, &progress, Status::Failed, None,
+                    Some("Antigravity subscription quota exhausted; this job is incomplete and will not be rerun automatically. Recorded tool progress is preserved.".into()));
             }
             match output.status {
                 TurnStatus::Completed => agent_host::finish(

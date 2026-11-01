@@ -15,12 +15,23 @@ fn json<T: serde::Serialize>(value: &T) -> Result<Value> {
     serde_json::to_value(value).map_err(|e| e.to_string())
 }
 fn result(record: &Operation) -> Result<Value> {
-    Ok(
-        json!({"operation_id":record.id,"scope":record.scope,"status":record.status,
+    let mut value = json!({"operation_id":record.id,"scope":record.scope,"status":record.status,
         "target":record.target,"action":record.message,"write_attempted":record.attempt_started_at.is_some(),
         "created_at":record.created_at,"attempt_started_at":record.attempt_started_at,
-        "receipt":record.receipt,"verification":record.verification,"error":record.error}),
-    )
+        "receipt":record.receipt,"verification":record.verification,"error":record.error});
+    // archive/has/like only projects recent likes; an older like can therefore
+    // return false before POST reports 65006 (duplicate). Keep the actual ledger
+    // rejection and do not invent a new success receipt or a GET verification.
+    // Protocol observation: bilibili-plugins/bilibili-api-collect/docs/video/action.md.
+    if record.message == "like_video"
+        && record.status == Status::Rejected
+        && record.error.as_deref() == Some("Bilibili API rejected request (65006)")
+    {
+        value["outcome"] = json!({"kind":"already_liked","server_code":65006,
+            "server_reported_existing_like":true,"new_like_created":false,"readback_verified":false,
+            "retry_write":false,"detail":"Server rejected a duplicate like. The preliminary GET only covers recent likes; do not use another operation ID to repeat this action."});
+    }
+    Ok(value)
 }
 fn prepare(
     runtime: &Runtime,
@@ -167,6 +178,35 @@ fn bind_actor(runtime: &Runtime, actor_mid: u64) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn duplicate_like_explains_existing_state_without_inventing_verification() {
+        let mut record = Operation::new(
+            "duplicate-like",
+            Scope {
+                platform: Platform::Bilibili,
+                account: "test".into(),
+            },
+            "42".into(),
+            json!({"bvid":"BV17x411w7KC"}),
+            "like_video",
+        )
+        .unwrap();
+        record.status = Status::Rejected;
+        record.attempt_started_at = Some(record.created_at);
+        record.error = Some("Bilibili API rejected request (65006)".into());
+        let value = result(&record).unwrap();
+        assert_eq!(value["status"], "rejected");
+        assert_eq!(value["outcome"]["kind"], "already_liked");
+        assert_eq!(value["outcome"]["retry_write"], false);
+        assert_eq!(value["outcome"]["readback_verified"], false);
+        assert!(value["receipt"].is_null());
+        assert!(value["verification"].is_null());
+        record.message = "follow_uploader".into();
+        assert!(result(&record).unwrap().get("outcome").is_none());
+        record.message = "like_video".into();
+        record.error = Some("Bilibili API rejected request (-403)".into());
+        assert!(result(&record).unwrap().get("outcome").is_none());
+    }
     #[test]
     fn terminal_positive_operations_are_cached_without_network_or_replay() {
         use std::os::unix::fs::OpenOptionsExt;

@@ -110,7 +110,7 @@ impl ExecutionProfile {
                 .model
                 .as_ref()
                 .is_some_and(|m| m.is_empty() || m.len() > 128 || m.chars().any(char::is_control))
-            || self.default_accounts.len() > 4
+            || self.default_accounts.len() > 5
         {
             return Err("invalid frozen agent execution profile".into());
         }
@@ -133,6 +133,7 @@ impl ExecutionProfile {
                 "tieba" => runtime_core::Platform::Tieba,
                 "qq" => runtime_core::Platform::Qq,
                 "github" => runtime_core::Platform::Github,
+                "x" => runtime_core::Platform::X,
                 _ => return Err("unsupported profile default account platform".into()),
             };
             runtime_core::Scope {
@@ -153,6 +154,23 @@ pub struct Progress {
     pub operation_ids: Vec<String>,
     pub tool_calls: u32,
 }
+/// A trusted autonomous wake, not a user task or an observed platform message.
+/// The host supplies its standing execution policy through the frozen profile.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ActivityWake {
+    pub activity_id: String,
+    pub cycle: u64,
+}
+impl ActivityWake {
+    fn validate(&self) -> Result<()> {
+        validate_id(&self.activity_id)?;
+        if self.cycle == 0 {
+            return Err("activity cycle must be positive".into());
+        }
+        Ok(())
+    }
+}
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Job {
@@ -161,6 +179,8 @@ pub struct Job {
     pub status: Status,
     pub prompt: String,
     pub event: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activity: Option<ActivityWake>,
     #[serde(default)]
     pub context: AgentContext,
     #[serde(default)]
@@ -304,8 +324,53 @@ impl Queue {
         execution_profile: Option<ExecutionProfile>,
         created_at: u64,
     ) -> Result<Job> {
+        self.enqueue_turn(
+            id,
+            prompt,
+            event,
+            context,
+            execution_profile,
+            None,
+            created_at,
+        )
+    }
+    /// Uses the same single execution slot and action ledger, with no task prompt.
+    pub fn enqueue_activity(
+        &self,
+        id: &str,
+        context: AgentContext,
+        profile: ExecutionProfile,
+        activity: ActivityWake,
+        created_at: u64,
+    ) -> Result<Job> {
+        activity.validate()?;
+        self.enqueue_turn(
+            id,
+            "",
+            None,
+            context,
+            Some(profile),
+            Some(activity),
+            created_at,
+        )
+    }
+    fn enqueue_turn(
+        &self,
+        id: &str,
+        prompt: &str,
+        event: Option<Value>,
+        context: AgentContext,
+        execution_profile: Option<ExecutionProfile>,
+        activity: Option<ActivityWake>,
+        created_at: u64,
+    ) -> Result<Job> {
         validate_id(id)?;
-        validate_input(prompt, event.as_ref())?;
+        validate_turn_input(
+            prompt,
+            event.as_ref(),
+            activity.as_ref(),
+            execution_profile.as_ref(),
+        )?;
         context.validate()?;
         if let Some(profile) = &execution_profile {
             profile.validate()?;
@@ -318,6 +383,7 @@ impl Queue {
                 || entry.record.job.event != event
                 || entry.record.job.context != context
                 || entry.record.job.execution_profile != execution_profile
+                || entry.record.job.activity != activity
             {
                 return Err(
                     "job ID already belongs to a different prompt, event, agent context or execution profile".into(),
@@ -337,6 +403,7 @@ impl Queue {
                 status: Status::Pending,
                 prompt: prompt.into(),
                 event,
+                activity,
                 context,
                 execution_profile,
                 context_version: None,
@@ -974,6 +1041,22 @@ fn validate_input(prompt: &str, event: Option<&Value>) -> Result<()> {
     }
     Ok(())
 }
+fn validate_turn_input(
+    prompt: &str,
+    event: Option<&Value>,
+    activity: Option<&ActivityWake>,
+    profile: Option<&ExecutionProfile>,
+) -> Result<()> {
+    if let Some(wake) = activity {
+        wake.validate()?;
+        if !prompt.is_empty() || event.is_some() || profile.is_none() {
+            return Err("autonomous wake requires no task/event and a frozen profile".into());
+        }
+        Ok(())
+    } else {
+        validate_input(prompt, event)
+    }
+}
 fn validate_progress(progress: &Progress, unique: bool) -> Result<()> {
     for id in [&progress.thread_id, &progress.turn_id]
         .into_iter()
@@ -1024,7 +1107,12 @@ fn check_now(job: &Job, now: u64) -> Result<()> {
 fn validate_record(record: &Record) -> Result<()> {
     let job = &record.job;
     validate_id(&job.id)?;
-    validate_input(&job.prompt, job.event.as_ref())?;
+    validate_turn_input(
+        &job.prompt,
+        job.event.as_ref(),
+        job.activity.as_ref(),
+        job.execution_profile.as_ref(),
+    )?;
     job.context.validate()?;
     if let Some(profile) = &job.execution_profile {
         profile.validate()?;

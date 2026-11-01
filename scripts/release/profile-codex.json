@@ -1,0 +1,6 @@
+{
+  "engine": "codex",
+  "model": "gpt-6.1-terra",
+  "default_accounts": {"bilibili": "bili-main"},
+  "allowed_tools": ["runtime_memory", "runtime_modules", "runtime_operation", "runtime_expand", "social_discover", "social_search", "social_open", "social_discussion", "social_notifications", "social_creator_content", "social_subtitles", "media_read", "media_watch"]
+}

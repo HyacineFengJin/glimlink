@@ -4,6 +4,7 @@ umask 077
 runtime_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 runtime_image=rust:1.90-bookworm@sha256:3914072ca0c3b8aad871db9169a651ccfce30cf58303e5d6f2db16d1d8a7e58f
 runtime_build=false
+runtime_account_free=false
 runtime_client_test=false
 runtime_network=none
 runtime_stdin=()
@@ -13,6 +14,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     build) runtime_build=true ;;
     run) runtime_build=false ;;
+    test) runtime_build=false; runtime_account_free=true ;;
     client-test) runtime_build=false; runtime_client_test=true ;;
     online) runtime_network=bridge ;;
     stdio) runtime_stdin=(--interactive) ;;
@@ -26,7 +28,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 if [[ $# == 0 ]]; then
-  echo 'Usage: bash scripts/isolate.sh [build|run|client-test] [operator-webview] [online] [stdio|terminal] -- COMMAND [ARG ...]' >&2
+  echo 'Usage: bash scripts/isolate.sh [build|run|test|client-test] [operator-webview] [online] [stdio|terminal] -- COMMAND [ARG ...]' >&2
   exit 2
 fi
 mkdir -p "$runtime_root/.runtime"/{cache,state,reports}
@@ -64,6 +66,8 @@ elif $runtime_client_test; then
   # The desktop has its own budget; synthetic GUI checks never mount accounts.
   runtime_limits=(--memory 1g --memory-swap 1g --cpus 2)
   runtime_state=()
+elif $runtime_account_free; then
+  runtime_state=(--tmpfs "/state:rw,nosuid,nodev,noexec,mode=0700,uid=$(id -u),gid=$(id -g),size=64m")
 fi
 exec docker run --rm --init \
   "${runtime_stdin[@]}" \

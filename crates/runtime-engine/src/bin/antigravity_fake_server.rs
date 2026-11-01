@@ -25,6 +25,9 @@ fn main() {
         "true"
     );
     let scenario = std::env::args().nth(1).unwrap();
+    if scenario == "gc-budget" {
+        assert_eq!(std::env::var("GOMEMLIMIT").unwrap(), "64MiB");
+    }
     let args = std::env::args().collect::<Vec<_>>();
     let app_dir = args
         .windows(2)

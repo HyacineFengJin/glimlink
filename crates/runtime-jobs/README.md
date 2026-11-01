@@ -4,6 +4,12 @@ A synchronous, disk-backed queue for the single-model Agent Runtime host. It has
 no executor, networking, browser, scheduler, event polling, or platform retry.
 Dependencies are `runtime-core`, `serde`, and `serde_json`.
 
+The embedding host may also enqueue a typed `ActivityWake` with no task prompt
+or observed event, plus a frozen execution profile. This is a single autonomous
+model turn, not a task objective. Ordinary tasks still require a nonempty prompt.
+The queue's one-running-turn rule and action progress apply to both origins;
+timers, standing permissions and bounded activity notes belong to the host.
+
 Each method takes `jobs/jobs.lock` for one bounded filesystem transaction and
 releases it before returning. A model turn never holds this queue lock. A CLI can
 enqueue or inspect jobs while the daemon is running a turn. Lock contention waits

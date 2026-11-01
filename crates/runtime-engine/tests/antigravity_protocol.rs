@@ -46,6 +46,20 @@ impl Drop for Lab {
         let _ = fs::remove_dir_all(&self.0);
     }
 }
+#[test]
+fn configured_go_budget_reaches_native_process() {
+    let lab = Lab::new();
+    let mut config = lab.config("gc-budget");
+    config.go_memory_limit_mib = 64;
+    let mut client = AntigravityClient::spawn(config).unwrap();
+    client.initialize().unwrap();
+    let mut invalid = lab.config("gc-budget");
+    invalid.go_memory_limit_mib = 0;
+    assert_eq!(
+        AntigravityClient::spawn(invalid).err().unwrap().kind,
+        ErrorKind::InvalidInput
+    );
+}
 fn input() -> Vec<Input> {
     vec![Input::Text {
         text: "synthetic explicit input".into(),

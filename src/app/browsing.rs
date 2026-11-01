@@ -179,6 +179,16 @@ impl Runtime {
                     serde_json::to_value(data).map_err(|e| e.to_string())?,
                 )
             }
+            "bilibili.recommended" => {
+                let data = self
+                    .bili
+                    .home_recommendations(page_number(params)?, page_limit(params)?)
+                    .map_err(|e| e.to_string())?;
+                self.cache_bili_discovery(
+                    "recommended",
+                    serde_json::to_value(data).map_err(|e| e.to_string())?,
+                )
+            }
             "bilibili.comments" | "bilibili.comment_replies" => {
                 let id: VideoId = required_str(params, "video")?
                     .parse()

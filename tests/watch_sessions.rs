@@ -73,7 +73,7 @@ fn returned_watch_reference_retains_media_preferences_across_restart_and_next() 
         .unwrap();
     let session = {
         let mut rt = Runtime::open(&root, "public", None).unwrap();
-        rt.call("media.watch",&json!({"action":"start","target_ref":target,"read_now":false,"transcribe":false,"include_subtitles":false,"subtitle_language":"12345","speech_language":"zh-CN"})).unwrap()["session"].clone()
+        rt.call("media.watch",&json!({"action":"start","target_ref":target,"read_now":false,"transcribe":false,"include_subtitles":false,"subtitle_language":"12345","speech_language":"zh-CN","quality":"720p"})).unwrap()["session"].clone()
     };
     let mut rt = Runtime::open(&root, "public", None).unwrap();
     let next = rt
@@ -82,11 +82,15 @@ fn returned_watch_reference_retains_media_preferences_across_restart_and_next() 
             &json!({"action":"next","watch_ref":session["watch_ref"],"read_now":false}),
         )
         .unwrap();
+    assert_eq!(next["session"]["preferences"]["quality"], "720p");
+    assert_eq!(next["session"]["max_edge"], 1280);
     assert_eq!(next["session"]["preferences"]["transcribe"], false);
     assert_eq!(next["session"]["preferences"]["include_subtitles"], false);
     assert_eq!(next["session"]["preferences"]["subtitle_language"], "12345");
     assert_eq!(next["session"]["preferences"]["speech_language"], "zh");
-    let changed=rt.call("media.watch",&json!({"action":"next","watch_ref":session["watch_ref"],"read_now":false,"transcribe":true,"language":"ai-zh"})).unwrap();
+    let changed=rt.call("media.watch",&json!({"action":"next","watch_ref":session["watch_ref"],"read_now":false,"transcribe":true,"language":"ai-zh","quality":"1080p"})).unwrap();
+    assert_eq!(changed["session"]["preferences"]["quality"], "1080p");
+    assert_eq!(changed["session"]["max_edge"], 1920);
     assert_eq!(changed["session"]["preferences"]["transcribe"], true);
     assert_eq!(
         changed["session"]["preferences"]["subtitle_language"],

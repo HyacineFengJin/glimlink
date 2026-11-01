@@ -84,3 +84,9 @@ for d60/Twikit and iSarabjitDhiman/XClientTransaction, with pinned revisions and
 per-component attribution in crates/platform-x/NOTICE. Rust translations of the
 transaction algorithms remain attributed to their upstream author. Public X
 JavaScript is parsed as bounded runtime input, not redistributed or executed.
+
+The compact speech adapter includes a modified Candle 0.9.1 Whisper model
+module under its original MIT OR Apache-2.0 terms. See
+crates/runtime-speech/vendor/candle-whisper/PROVENANCE.md and its upstream
+license texts. The separate tiled token embedding implementation is original
+Glimlink MIT code; the upstream model is not reclassified as ours.

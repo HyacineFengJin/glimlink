@@ -21,3 +21,13 @@ let result = runtime_speech::transcribe(models, &[0.0f32; 16000], 16000, 1, None
 本轮真实验收：Docker 384 MiB、2 CPU、无网转写公开 [Candle JFK WAV](https://huggingface.co/datasets/Narsil/candle-examples/blob/main/samples_jfk.wav) 的前10秒，正确识别英文且自然结束；约4.6秒，peak RSS约149.9 MiB，容器峰值约198.8 MiB。报告位于 `.runtime/reports/speech-jfk-q80-20261030.json`。这是该公开样本的测量，不是所有平台语音/所有模型共存场景的内存上限保证。
 
 实现参考 [Candle 0.9.1 Whisper 示例](https://github.com/huggingface/candle/blob/0.9.1/candle-examples/examples/whisper/main.rs)、[量化 Whisper 模型](https://github.com/huggingface/candle/blob/0.9.1/candle-transformers/src/models/whisper/quantized_model.rs) 与 [固定模型仓库](https://huggingface.co/lmz/candle-whisper/tree/02d8350e5402f18725eadb6101b4963d181b0b5e)。依赖的版权及许可证见各上游包；Candle 为 MIT OR Apache-2.0，Whisper 模型为 MIT。
+
+## 小内存推理
+
+词表保留原 Q8_0 格式，只按需展开 token 行；输出投影每次最多展开1024行并进行 f32 乘法，避免常驻整张约76 MiB的浮点词表。不降低采样率、不缩短原有窗口，也不新增激活量化。编码后提前释放 encoder；decoder 只保留特征。
+
+GGUF 载入的是拥有所有权的 CPU 数组，并非文件映射。Linux 下加载完成后对该只读模型文件给出 `POSIX_FADV_DONTNEED` 提示，减少文件缓存与权重内存双份占用；该建议可被内核忽略，后续窗口可能增加磁盘读取，不刷新全局缓存。
+
+Candle 模型层的局部适配位于 `vendor/candle-whisper`，保留原 MIT OR Apache-2.0 及来源；独立分块实现 `src/token_embedding.rs` 为本项目 MIT 代码。数值测试对齐完整 f32 参考；中文、英文真实样本的转写与原实现逐字一致。完整容器内存包括文件缓存，须与进程 RSS/PSS 分开判断。
+
+GNU/Linux 下推理调用结束并销毁 Rayon pool 后，调用 `malloc_trim` 归还分配器中未使用的页面；活跃的结果、缓存引用和工具状态不受影响。这是操作边界上的尽力回收，不增加后台线程。真实四轮大图/语音结束后的进程树PSS由约156 MiB降到18 MiB。

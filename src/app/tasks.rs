@@ -533,7 +533,7 @@ impl Runtime {
                 let creator = self.save_task_target(&TaskTarget::Creator { mid })?;
                 let can_send = super::auth::saved_session(&self.state, "bilibili", &scope.account)?
                     .and_then(|path| platform_bilibili::Session::load(&path).ok())
-                    .is_some_and(|session| session.stable_identity() == mid.to_string());
+                    .is_some();
                 let playback = self
                     .target_playback_hint(reference)?
                     .unwrap_or(PlaybackHint {
@@ -543,7 +543,7 @@ impl Runtime {
                 Ok(
                     json!({"status":"ok","scope":scope,"kind":"video","target_ref":reference,"creator_ref":creator,"playback":playback,"content":content,
                     "actions":{"watch":"media_watch","discussion":"social_discussion","creator_content":"social_creator_content",
-                    "send":{"tool":"social_send","available":can_send,"constraint":"own_video_and_own_reply_targets_only"},
+                    "send":{"tool":"social_send","available":can_send,"constraint":"authorized_public_video_or_exact_reply_target"},
                     "like":"social_like","follow":"social_follow","subtitles":"social_subtitles"},"media_downloaded":false}),
                 )
             }
@@ -623,7 +623,10 @@ impl Runtime {
                 "social.notifications" => saved.method.ends_with(".notifications"),
                 "social.publications" => saved.method.ends_with(".publications"),
                 "social.search" => saved.method == "bilibili.search",
-                "social.discover" => saved.method == "bilibili.popular",
+                "social.discover" => matches!(
+                    saved.method.as_str(),
+                    "bilibili.popular" | "bilibili.recommended"
+                ),
                 "social.creator_content" => matches!(
                     saved.method.as_str(),
                     "bilibili.uploader_videos" | "bilibili.dynamics"
@@ -632,6 +635,20 @@ impl Runtime {
             };
             if !allowed {
                 return Err("continuation belongs to another task".into());
+            }
+            if method == "social.discover"
+                && let Some(source) = params.get("source")
+            {
+                let expected = if saved.method == "bilibili.recommended" {
+                    "recommended"
+                } else {
+                    "popular"
+                };
+                if source.as_str() != Some(expected) {
+                    return Err(
+                        "continuation source is fixed; start a new read to change it".into(),
+                    );
+                }
             }
             if !saved
                 .method
@@ -680,7 +697,14 @@ impl Runtime {
             "social.notifications" => "notifications",
             "social.publications" => "publications",
             "social.search" => "search",
-            "social.discover" => "popular",
+            "social.discover" => match match params.get("source") {
+                None => "popular",
+                Some(value) => value.as_str().ok_or("discover source must be a string")?,
+            } {
+                "popular" => "popular",
+                "recommended" => "recommended",
+                _ => return Err("discover source must be recommended or popular".into()),
+            },
             _ => return Err("invalid list task".into()),
         };
         let route = format!("{name}.{suffix}");
@@ -696,7 +720,7 @@ impl Runtime {
                 Ok(json!({"status":"ok","scope":rt.scope(Platform::Bilibili),"counts":result["page"]["data"],"content_writes":false}))
             });
         }
-        let login = matches!(suffix, "notifications" | "publications");
+        let login = matches!(suffix, "notifications" | "publications" | "recommended");
         let mut request = params.clone();
         let object = request.as_object_mut().unwrap();
         object.remove("platform");
@@ -1246,6 +1270,44 @@ mod tests {
         path
     }
     #[test]
+    fn homepage_source_and_cached_tail_survive_continuation_without_public_fallback() {
+        let dir = lab();
+        let mut rt = Runtime::open(&dir, "public", None).unwrap();
+        let data = json!({"items":[{"aid":170001,"bvid":"BV17x411w7KC","title":"first"},{"aid":2,"bvid":"BV1KMsf6uEzK","title":"second"}],
+            "source":"bilibili_home_recommendations","signed_in_request":true,"personalization_verified":false,"has_more":false});
+        let first = rt
+            .project_task_list(
+                "bilibili.recommended",
+                &json!({"source":"recommended","limit":1}),
+                data,
+                BTreeSet::new(),
+            )
+            .unwrap();
+        let next = first["continuation"].as_str().unwrap();
+        assert_eq!(first["context"]["source"], "bilibili_home_recommendations");
+        assert!(
+            rt.call(
+                "social.discover",
+                &json!({"source":"popular","continuation":next})
+            )
+            .unwrap_err()
+            .contains("source is fixed")
+        );
+        let second = rt
+            .call(
+                "social.discover",
+                &json!({"source":"recommended","continuation":next}),
+            )
+            .unwrap();
+        assert_eq!(second["items"][0]["bvid"], "BV1KMsf6uEzK");
+        assert_eq!(second["provider_pages_read"], 0);
+        assert_eq!(second["context"]["source"], "bilibili_home_recommendations");
+        assert!(second["continuation"].is_null());
+        assert!(rt.call("social.discover", &json!({"source":42})).is_err());
+        drop(rt);
+        fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
     fn persisted_targets_restore_scope_but_never_allow_an_account_override() {
         let dir = lab();
         let state = dir.join("state");
@@ -1489,7 +1551,7 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
     #[test]
-    fn dense_images_are_fitted_to_engine_budget_without_a_model_resize_retry() {
+    fn compact_previews_are_fitted_to_engine_budget_without_a_model_resize_retry() {
         use base64::Engine;
         let dir = lab();
         let file = dir.join("noise.png");
@@ -1506,7 +1568,7 @@ mod tests {
         let resource = rt.import_file(&file, "image/png").unwrap();
         let result = rt.call_for_engine(
             "media.read",
-            &json!({"reference":resource.id,"max_edge":512}),
+            &json!({"reference":resource.id,"quality":"preview","max_edge":480}),
         );
         let images = result
             .content_items

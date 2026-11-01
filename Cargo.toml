@@ -13,7 +13,7 @@ license = "MIT"
 name = "agent-runtime"
 description = "Glimlink: a lightweight agent runtime for platform interaction and shared memory"
 repository = "https://github.com/HyacineFengJin/glimlink"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 edition = "2024"
 rust-version = "1.90"
 publish = false
@@ -24,6 +24,12 @@ default = []
 # Explicit opt-in only after the user resumes personal-account testing.
 weixin-live = ["dep:platform-weixin"]
 agent-host-tests = ["runtime-engine/test-helper"]
+memory-bench = []
+
+[[bin]]
+name = "runtime-memory-workload"
+path = "tests/support/memory_workload.rs"
+required-features = ["memory-bench"]
 
 [[bin]]
 name = "agent-host-fixture"

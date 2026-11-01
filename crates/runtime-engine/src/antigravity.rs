@@ -26,6 +26,8 @@ pub struct AntigravityConfig {
     /// Operator persona/role only. Recollections belong in the prompt as data.
     pub developer_instructions: Option<String>,
     pub model: Option<String>,
+    /// Go soft runtime budget; mapped/native allocations still count in cgroup.
+    pub go_memory_limit_mib: u16,
     pub timeout: Duration,
     pub max_jsonl_bytes: usize,
     pub max_wire_bytes: usize,
@@ -49,8 +51,9 @@ impl AntigravityConfig {
             home,
             developer_instructions: None,
             model: None,
+            go_memory_limit_mib: 128,
             timeout: Duration::from_secs(120),
-            max_jsonl_bytes: 512 * 1024,
+            max_jsonl_bytes: 1024 * 1024,
             max_wire_bytes: 8 * 1024 * 1024,
             max_input_bytes: 128 * 1024,
             max_output_bytes: 256 * 1024,
@@ -212,7 +215,8 @@ fn install_managed_settings(gemini: &Path) -> Result<()> {
 
 impl AntigravityClient {
     pub fn spawn(mut config: AntigravityConfig) -> Result<Self> {
-        if config.timeout.is_zero()
+        if !(32..=256).contains(&config.go_memory_limit_mib)
+            || config.timeout.is_zero()
             || config.timeout > Duration::from_secs(600)
             || !(1024..=4 * 1024 * 1024).contains(&config.max_jsonl_bytes)
             || config.max_wire_bytes < config.max_jsonl_bytes
@@ -280,7 +284,7 @@ impl AntigravityClient {
             .env("LANG", "C.UTF-8")
             // Native Go keeps its own soft GC budget inside the outer cgroup.
             // This is not an RSS limit: mapped code and native allocations remain.
-            .env("GOMEMLIMIT", "128MiB")
+            .env("GOMEMLIMIT", format!("{}MiB", config.go_memory_limit_mib))
             .env("GOGC", "60")
             .env("AGY_CLI_DISABLE_AUTO_UPDATE", "true");
         let transport = Transport::spawn(command, config.max_jsonl_bytes, config.max_wire_bytes)?;
