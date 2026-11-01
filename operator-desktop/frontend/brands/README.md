@@ -35,4 +35,4 @@ a blanket open-source license.
 Including a file in a source-path audit is not a legal clearance. Public release
 review must retain the owners and applicable conditions, establish rights for
 the intended distribution or omit/replace the affected asset. This repository
-has not been published by this change.
+does not redistribute these image files in its public source or Alpha assets.

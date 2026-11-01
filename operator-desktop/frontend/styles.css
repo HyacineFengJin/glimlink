@@ -207,7 +207,9 @@ h1 { display:flex; align-items:center; flex-wrap:wrap; font-size:39px; line-heig
 .tone-iris .platform-icon { color:#7043a7; background:#ebdbff; border-radius:12px 17px 12px 17px; }
 .tone-mint .platform-icon { color:#3d6b54; background:#d8e7df; }
 .account-card .platform-icon { background:#fff; border:1px solid #e6e2eb; }
+.account-card.tone-carbon .platform-icon { background:#28252e; border-color:#28252e; }
 [data-platform="codex"] .platform-icon { background:#000; border-color:#000; }
+[data-platform="codex"] .platform-icon .brand-fallback { color:#fff; }
 .platform-logo { display:block; width:28px; height:28px; object-fit:contain; }
 .brand-fallback { font-size:17px; line-height:1; color:var(--ink); }
 .account-state { padding:4px 7px; border-radius:16px; background:var(--container); color:var(--muted); font-size:9px; font-weight:650; white-space:nowrap; max-width:82px; overflow:hidden; text-overflow:ellipsis; }

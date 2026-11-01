@@ -53,6 +53,11 @@ fixed color themes and two density settings, an expressive headline, strong
 filled actions and asymmetric Bento surfaces. Original layout CSS/decorative SVG and short state
 transitions provide the visuals; no animation loop, remote font, asset CDN or
 frontend framework is involved. Reduced-motion preferences are respected.
+For a private workstation with the separately sourced provider artwork present,
+pass `env GLIMLINK_OPERATOR_LOCAL_BRANDS=1` before `sh` in the isolated build
+command. This opts into existing local assets without downloading, recoloring or
+publishing them. Their provenance and provider rights remain separate from MIT
+code; the public build still works with text marks when assets are absent.
 
 The independent [dependency inventory](dependency-licenses.json) retains the
 license metadata of 398 external Cargo packages, including build/target-specific
@@ -153,6 +158,10 @@ existing known_hosts, and confirm a new host in a terminal first. The GUI does
 not disable host-key verification, offer an SSH-password dialogue or pass SSH
 credentials through the Runtime protocol. Local mode controls the adjacent core
 executable; an explicit Runtime path and state directory can be configured.
+An explicit desktop launcher may prefill connection metadata with `--ssh HOST
+--runtime /opt/glimlink/runtime --state /state --account main`. These arguments
+do not contain credentials, persist account data, connect on startup or start a
+login. The same main-window IPC origin checks protect this read-only preset.
 
 Personal WeChat testing remains paused, including in this UI. QQ's current live
 password result remains `140022017 / SEC_BEAT`, with cause unconfirmed. A new

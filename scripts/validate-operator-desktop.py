@@ -134,6 +134,7 @@ def main():
     parser.add_argument('--screenshot', default='/reports/operator-desktop-native.png')
     parser.add_argument('--inspect-click', nargs=2, type=int, metavar=('X', 'Y'))
     parser.add_argument('--window-size', nargs=2, type=int, metavar=('WIDTH', 'HEIGHT'))
+    parser.add_argument('--launch-destination')
     args = parser.parse_args()
     if args.window_size:
         assert 780 <= args.window_size[0] <= 1920 and 620 <= args.window_size[1] <= 1600
@@ -145,7 +146,11 @@ def main():
         environment = dict(os.environ, HOME=temporary, XDG_CONFIG_HOME=str(home / 'config'), XDG_CACHE_HOME=str(home / 'cache'), XDG_DATA_HOME=str(home / 'data'), XDG_RUNTIME_DIR=str(home / 'run'), AGENT_RUNTIME_STATE=str(home / 'state'))
         (home / 'run').mkdir(mode=0o700)
         with open(str(args.report) + '.stderr', 'wb') as errors:
-            application = subprocess.Popen([args.binary], cwd=temporary, env=environment, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=errors, start_new_session=True)
+            command = [args.binary]
+            if args.launch_destination:
+                assert not args.inspect_click, 'preset acceptance must not contact a real SSH host'
+                command.extend(['--ssh', args.launch_destination, '--runtime', '/opt/glimlink/runtime', '--state', '/state', '--account', 'main'])
+            application = subprocess.Popen(command, cwd=temporary, env=environment, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=errors, start_new_session=True)
             display = Display()
             window = None
             start = time.monotonic()
@@ -182,6 +187,8 @@ def main():
                 memory_events = dict(line.split() for line in (cgroup / 'memory.events').read_text().splitlines())
                 assert memory_max == str(1024**3), 'run with the 1 GiB client-test budget'
                 assert memory_peak < 1024**3 and int(memory_events['oom_kill']) == 0
+                if args.launch_destination:
+                    assert 'ssh' not in seen, 'connection preset must not connect on startup'
                 if clicked:
                     assert 'agent-runtime' in seen, 'GUI click did not invoke the real Runtime IPC'
                 report = dict(native_tauri_window=True, bundled_frontend=True, gui_status_ipc_observed=clicked and 'agent-runtime' in seen, fresh_synthetic_state=True, network='none', real_account_used=False, application_tree_peak_rss_bytes=peak_rss, application_tree_peak_pss_bytes=peak_pss, idle_application_tree_peak_rss_bytes=idle_peak_rss, idle_application_tree_peak_pss_bytes=idle_peak_pss, container_peak_bytes=memory_peak, container_limit_bytes=int(memory_max), oom_kills=int(memory_events['oom_kill']), normal_window_close=True, observed_process_names=sorted(seen), screenshot=args.screenshot)

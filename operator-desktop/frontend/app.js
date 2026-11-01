@@ -578,6 +578,20 @@ async function initialize() {
     clearMemory('界面预览没有操控端进程，无法测量。');
     $('#memory-state').textContent = '预览不可用';
   } else {
+    try {
+      const preset = await tauri.core.invoke('launch_connection');
+      if (preset) {
+        connection = preset;
+        setMode(preset.mode);
+        $('#destination').value = preset.destination || '';
+        $('#state').value = preset.state;
+        $('#account').value = preset.account;
+        $('#runtime-binary').value = preset.runtime_binary || '';
+        connectionDirty = false;
+        $('#connection-summary').textContent = preset.mode === 'ssh' ? `通过 SSH 控制 ${preset.destination}` : '控制这台电脑上的 Runtime';
+        $('#connection-feedback').textContent = '已载入启动器的连接配置；尚未检查账号或发起登录。';
+      }
+    } catch (_) { toast('无法读取启动器连接配置，请手动设置。'); }
     try { await tauri.event.listen('operator-login', (event) => handleLoginEvent(event.payload)); }
     catch (_) { toast('无法订阅登录状态，请重新打开操控端。'); }
   }

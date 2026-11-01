@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 mod bridge;
+mod launch;
 mod memory;
 mod security;
 mod x_login;
@@ -11,6 +12,7 @@ fn commands(invoke: tauri::ipc::Invoke<tauri::Wry>) -> bool {
         bridge::begin_login,
         bridge::submit_login_input,
         bridge::cancel_login,
+        launch::launch_connection,
         memory::memory_snapshot,
         x_login::open_x_login_window,
         x_login::open_x_in_browser,
@@ -18,7 +20,13 @@ fn commands(invoke: tauri::ipc::Invoke<tauri::Wry>) -> bool {
     handler(invoke)
 }
 fn main() {
+    let defaults =
+        launch::Defaults::parse(std::env::args().skip(1).collect()).unwrap_or_else(|message| {
+            eprintln!("{message}");
+            std::process::exit(2)
+        });
     let application = tauri::Builder::default()
+        .manage(defaults)
         .manage(bridge::Sessions::default())
         .manage(x_login::Windows::default())
         .setup(|app| {

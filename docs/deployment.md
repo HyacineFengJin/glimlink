@@ -4,6 +4,7 @@ Supported release target: x86_64 GNU/Linux, Debian 12 or newer (also Ubuntu
 24.04). No browser, Docker, Node, Python or Rust compiler is required on the VPS.
 The optional desktop is separate; this release contains the Runtime and terminal
 operator. QQ live login is still blocked; Weixin is paused. Start with Bilibili.
+For a container-isolated host, use [the Docker layout](deployment-docker.md).
 
 ## Install
 

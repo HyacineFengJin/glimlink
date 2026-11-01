@@ -17,6 +17,14 @@ done
 cp -p /workspace/operator-desktop/Cargo.toml /workspace/operator-desktop/Cargo.lock \
   /workspace/operator-desktop/build.rs /workspace/operator-desktop/tauri.conf.json \
   "$operator_work/operator-desktop/"
+# Explicit private-workstation artwork only. Original asset files remain ignored
+# and retain their provider ownership; public/source-only builds keep text marks.
+if [ "${GLIMLINK_OPERATOR_LOCAL_BRANDS:-0}" = 1 ]; then
+  for asset in bilibili.ico qq.png tieba.jpg weixin.png github.svg codex.png antigravity.svg; do
+    test -f "$operator_work/operator-desktop/frontend/brands/$asset"
+  done
+  sed -i 's|const brandAssets = Object.freeze({});|const brandAssets = Object.freeze({bilibili:"brands/bilibili.ico",qq:"brands/qq.png",tieba:"brands/tieba.jpg",weixin:"brands/weixin.png",github:"brands/github.svg",codex:"brands/codex.png",antigravity:"brands/antigravity.svg"});|' "$operator_work/operator-desktop/frontend/app.js"
+fi
 cd "$operator_work/operator-desktop"
 export CARGO_TARGET_DIR=/cache/operator-desktop-target
 if [ "$#" = 0 ]; then
