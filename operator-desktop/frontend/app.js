@@ -149,6 +149,7 @@ function publicCode(error) {
   return typeof code === 'string' && /^[a-zA-Z0-9_.:-]{1,80}$/.test(code) ? code : 'operation_failed';
 }
 function publicMessage(error) {
+  if (publicCode(error) === 'state_busy') return '后台正在使用账号状态，请先在调控页停止后台，再登录。';
   const message = error?.message || error?.error?.message;
   if (typeof message === 'string') return message.slice(0, 500);
   if (typeof error === 'string') return error.slice(0, 500);
@@ -239,9 +240,9 @@ function render() {
     const detail = element('p', 'account-detail', state.detail);
     detail.title = state.detail;
     const actions = element('div', 'account-actions');
-    const login = element('button', 'login-button', paused ? '暂停测试' : current ? (active.id ? '取消登录' : '正在启动…') : state.status === 'authenticated' || state.status === 'online' ? '核验与复用 ↗' : platform.id === 'github' ? 'Token 登录 ↗' : platform.id === 'x' ? '复用 / 导入 ↗' : platform.kind === 'agent' ? '登录订阅 ↗' : '连接账号 ↗');
+    const login = element('button', 'login-button', paused ? '暂停测试' : current ? (active.id ? '取消登录' : '正在启动…') : state.status === 'authenticated' || state.status === 'online' ? '核验与复用 ↗' : platform.id === 'github' ? '在浏览器中获取 Token ↗' : platform.id === 'x' ? '复用 / 导入 ↗' : '在浏览器中登录 ↗');
     login.disabled = !bridge || paused || refreshing || connectionDirty || (active && !current) || (current && !active.id);
-    login.addEventListener('click', () => current ? cancelLogin() : beginLogin(platform.id));
+    login.addEventListener('click', () => current ? cancelLogin() : beginLogin(platform.id, platform.id === 'qq' ? 'qr' : 'auto'));
     const check = element('button', 'account-check');
     check.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a7 7 0 1 0 .4 7M18 3v5h-5"/></svg>';
     check.title = `检查 ${platform.name} 状态`;
@@ -250,6 +251,10 @@ function render() {
     check.addEventListener('click', () => checkOne(platform.id));
     actions.append(login, check);
     card.append(top, name, accountName, detail, actions);
+    if (state.error === 'state_busy' && !paused) {
+      const stop = element('button','login-worker-stop','停止后台后登录');stop.type='button';stop.disabled=!bridge || Boolean(active) || refreshing || connectionDirty;
+      stop.addEventListener('click',()=>stopWorkerAndLogin(platform.id));card.append(stop);
+    }
     if (platform.id === 'x') {
       const update = element('button', 'x-refresh-login', '更新网页登录态');
       update.type = 'button';
@@ -309,6 +314,16 @@ async function refreshAll() {
   try { for (const platform of platforms) await checkOne(platform.id, true); }
   finally { refreshing = false; render(); }
   note('已检查账号状态，没有自动发起登录');
+}
+async function stopWorkerAndLogin(platform) {
+  if (!bridge || active || connectionDirty) return;
+  try {
+    const snapshot=await invoke('control_request',{connection,command:{action:'snapshot'}});
+    if(snapshot.host?.model_process_active || snapshot.jobs?.some(j=>j.status==='running'))throw {code:'worker_active',message:'后台正在执行一轮，请等待结束，或在调控页主动停止。'};
+    await invoke('worker_control',{connection,start:false});
+    note('后台已停止，登录后可在调控页重新启动。');
+    await beginLogin(platform,platform==='qq'?'qr':'auto');
+  } catch(error) {const state=states.get(platform);state.error=publicCode(error);state.detail=publicMessage(error);render();}
 }
 async function beginLogin(platform, method = 'auto') {
   if (!bridge || active || connectionDirty || platformFor(platform).paused) return;

@@ -501,10 +501,11 @@ pub fn request_once(options: &Options, request: &Request, deadline: Instant) -> 
 }
 
 fn browser(url: &str, open: bool) {
-    eprintln!("Human verification: {url}");
     if !open {
+        eprintln!("Human verification: {url}");
         return;
     }
+    eprintln!("Opening the system browser for human verification.");
     // The URL is always a newly created client loopback page, never shell code.
     let spawned = Command::new(if cfg!(target_os = "macos") {
         "open"

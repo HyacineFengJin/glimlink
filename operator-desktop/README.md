@@ -25,7 +25,19 @@ native deployments sample the verified Runtime PID and native-engine children
 failures never fall back to operator memory. Hidden pages stop scheduling, and
 only 24 samples stay in memory. Language/theme controls live only in Settings.
 Select menus use small keyboard-accessible rounded lists rather than native
-WebKit/GTK popups. Niri uses an undecorated main window.
+WebKit/GTK popups. The main window uses original themed chrome with native mouse
+dragging, double-click maximize/restore, and close controls. Unsupported minimize
+is hidden on Niri; no Runtime IPC is involved in window management.
+
+Sign-in QR/CAPTCHA pages now open in the operator's system browser by default;
+provider OAuth pages already do so. Completion still arrives through the private
+local/SSH login driver. Existing sessions are reused first. A running worker can
+return `state_busy` before any page opens; the UI explains this and provides an
+explicit stop-and-retry button for an idle worker. It refuses to silently stop a
+running model turn. The worker remains stopped after login until restarted in
+Control. GitHub opens its token settings and still requires private token input;
+X retains explicit private Cookie import. Opening a provider page alone is not
+successful Runtime authentication.
 
 ## Build
 

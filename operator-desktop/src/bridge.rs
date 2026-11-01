@@ -120,9 +120,8 @@ impl Connection {
         let mut options = Options::parse(args)
             .map_err(|_| ApiError::new("invalid_connection", "连接参数或登录方式无效。"))?
             .ok_or_else(|| ApiError::new("invalid_connection", "缺少连接参数。"))?;
-        // The GUI has no terminal for a manual nonce URL fallback. An explicit
-        // helper failure is preferable to leaking a private portal link to logs.
-        options.ui = runtime_operator::presentation::UiMode::Webview;
+        // Human verification opens on this operator computer, never on the VPS.
+        options.ui = runtime_operator::presentation::UiMode::Browser;
         options.ssh_batch = true;
         Ok(options)
     }
@@ -773,7 +772,7 @@ impl Human for DesktopUi {
             self.qr(data)?;
         }
         if matches!(event, "qr_ready" | "qr_status") {
-            self.event_data("progress", json!({"status":"verification_required","message":"请在独立验证窗口完成扫码或确认。"}));
+            self.event_data("progress", json!({"status":"verification_required","message":"请在系统浏览器的登录页完成扫码或确认。"}));
         }
         Ok(())
     }
@@ -807,7 +806,7 @@ impl Human for DesktopUi {
     ) -> runtime_control::Result<UiOutcome<CaptchaProof>> {
         self.event_data(
             "progress",
-            json!({"status":"verification_required","message":"请在独立验证窗口完成人工验证。"}),
+            json!({"status":"verification_required","message":"请在系统浏览器的登录页完成人工验证。"}),
         );
         self.native.captcha(challenge, &self.cancel, deadline)
     }
@@ -820,6 +819,12 @@ impl Human for DesktopUi {
             return secret_input(required.kind, initial)
                 .map(Some)
                 .map_err(|_| "invalid private GUI input".into());
+        }
+        if self.platform == Platform::Github && required.kind == SecretInputKind::Token {
+            // GitHub has no bundled OAuth application. Open its own token page;
+            // the token still returns through the existing private input channel.
+            open_browser("https://github.com/settings/tokens")
+                .map_err(|_| "system browser unavailable")?;
         }
         *self
             .expected

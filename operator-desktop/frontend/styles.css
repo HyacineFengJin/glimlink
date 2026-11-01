@@ -553,3 +553,24 @@ select { appearance:none; -webkit-appearance:none; }
 .m3-menu-option.menu-active { outline:2px solid var(--primary); outline-offset:-2px; background:var(--container); }
 .menu-check { opacity:0; flex-shrink:0; }
 [aria-selected=true]>.menu-check { opacity:1; }
+
+/* Our own window chrome stays separate from scrollable app content. */
+:root { --titlebar-height:42px; }
+body { padding-top:var(--titlebar-height); }
+.window-titlebar { position:fixed; inset:0 0 auto; z-index:80; height:var(--titlebar-height); display:flex; justify-content:space-between; align-items:center; gap:20px; padding:0 10px 0 20px; background:var(--canvas); color:var(--ink); border-bottom:1px solid var(--line); user-select:none; -webkit-user-select:none; }
+.window-brand { display:flex; align-items:center; gap:9px; min-width:0; pointer-events:none; font-size:12px; font-weight:750; }
+.window-brand>svg { width:23px; height:23px; fill:var(--primary); transform:rotate(-12deg); }
+.window-brand>svg rect:last-child { fill:var(--spark-ink); }
+.window-subtitle { font-size:10px; font-weight:500; color:var(--muted); }
+.window-controls { display:flex; align-items:center; gap:5px; flex-shrink:0; }
+.window-controls button { display:grid; place-items:center; width:34px; height:29px; border:0; border-radius:11px; background:transparent; color:var(--muted); }
+.window-controls button:hover { background:var(--primary-soft); color:var(--primary-dark); }
+.window-controls #window-close:hover { background:#ffe0df; color:#a02530; }
+.window-controls svg { width:16px; height:16px; }
+.window-controls .restore-icon { display:none; }
+#window-maximize[data-maximized=true] .restore-icon { display:block; }
+#window-maximize[data-maximized=true] .maximize-icon { display:none; }
+.app-shell { min-height:calc(100vh - var(--titlebar-height)); }
+.rail { top:var(--titlebar-height); height:calc(100vh - var(--titlebar-height)); height:calc(100dvh - var(--titlebar-height)); }
+
+.login-worker-stop { grid-column:1/-1; border:1px solid var(--primary); border-radius:16px; color:var(--primary-dark); background:var(--primary-soft); padding:10px 12px; margin-top:10px; font:inherit; font-size:11px; }

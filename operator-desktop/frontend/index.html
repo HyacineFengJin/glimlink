@@ -11,8 +11,14 @@
   <script src="app.js" defer></script>
   <script src="console.js" defer></script>
   <script src="selects.js" defer></script>
+  <script src="window.js" defer></script>
 </head>
 <body>
+  <header class="window-titlebar" id="window-titlebar" aria-label="窗口标题栏">
+    <div class="window-brand"><svg viewBox="0 0 30 30" aria-hidden="true"><rect x="4" y="12" width="6" height="14" rx="3"/><rect x="12" y="4" width="6" height="22" rx="3"/><rect x="20" y="15" width="6" height="11" rx="3"/></svg><span>Glimlink</span><span class="window-subtitle">Operator</span></div>
+    <div class="window-controls"><button id="window-minimize" type="button" title="最小化" aria-label="最小化" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"/></svg></button><button id="window-maximize" type="button" title="最大化" aria-label="最大化"><svg class="maximize-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="3"/></svg><svg class="restore-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="8" width="11" height="11" rx="3"/><path d="M9 5h7a3 3 0 0 1 3 3v7"/></svg></button><button id="window-close" type="button" title="关闭窗口" aria-label="关闭窗口"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg></button></div>
+    <span id="window-feedback" class="sr-only" role="status"></span>
+  </header>
   <div class="app-shell">
     <aside class="rail" aria-label="主导航">
       <div class="brand-mark" aria-label="Glimlink"><span></span><span></span><span></span></div>

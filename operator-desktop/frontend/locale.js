@@ -3,6 +3,13 @@
 // marked translate=no and are never rewritten or persisted by this module.
 (() => {
   const en = {
+    '在浏览器中获取 Token ↗':'Get a token in browser ↗',
+    '开始登录检查':'Checking sign-in','已取消':'Cancelled',
+    '窗口标题栏':'Window title bar','最小化':'Minimize','最大化':'Maximize','还原窗口':'Restore window','关闭窗口':'Close window','窗口操作未完成。':'The window action did not complete.',
+    '在浏览器中登录 ↗':'Sign in with browser ↗','后台正在使用账号状态，请先在调控页停止后台，再登录。':'The worker owns account state. Stop it in Control before signing in.',
+    '停止后台后登录':'Stop worker and sign in','后台正在执行一轮，请等待结束，或在调控页主动停止。':'A turn is running. Wait for it to finish, or stop it in Control.',
+    '后台已停止，登录后可在调控页重新启动。':'Worker stopped. You can restart it in Control after signing in.',
+    '请在系统浏览器的登录页完成扫码或确认。':'Scan or confirm on the sign-in page in your system browser.',
     '简体中文':'Simplified Chinese',
     '峰值':'Peak','上限':'Limit','Runtime · VPS 容器':'Runtime · VPS container','Runtime · 本机':'Runtime · local',
     '统计当前连接的 Runtime，包含原生引擎，不含操控端。':'Measures the connected Runtime and its native engines, excluding this operator.',
@@ -49,6 +56,8 @@
   function text(s) {
     if (language === 'zh-CN') return inverse.get(s) || s;
     if (en[s]) return en[s];
+    const status = s.match(/^(Bilibili|QQ|贴吧|微信|GitHub|X|Codex|Antigravity) · (.+)$/);
+    if (status) return (en[status[1]] || status[1]) + ' · ' + text(status[2]);
     const replacements = [
       [/^通过 SSH 控制 (.+)$/, 'Control $1 over SSH'], [/^账号别名 (.+) 尚未登录$/, 'Not signed in · profile $1'],
       [/^检查 (.+) 状态$/, 'Check $1 status'], [/^(.+) 标志$/, '$1 logo'], [/^(.+) · 登录中$/, '$1 · signing in'],

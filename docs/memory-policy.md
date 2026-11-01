@@ -193,3 +193,28 @@ Detail is not automatically resized to the old 64 KiB preview budget: a bounded
 512 KiB total raw-image allowance fits within the 1 MiB wire frame. An oversized
 detail produces an explicit input-unavailable/partial result so the AI can choose
 a tighter region or explicit JPEG. There is no upscaling substitute for HD.
+
+## Context on the VPS
+
+Inference KV caches for remote models are held by the inference service. This
+does not make client context free: Runtime/CLI prompt strings, parsed JSON,
+serialization, tool responses and decoded media still consume VPS memory.
+Character/token counts and local byte/RSS counts are different budgets.
+
+The current engine-independent assembly already supplies a shared persona/role,
+selected attributed recollections, a conversation recap, bounded recent dialogue
+or autonomous checkpoints, and references to larger resources. Each managed job
+starts a new native engine thread/session. Recent dialogue retains up to eight
+turns in at most 16 KiB of encoded history; a recalled-memory snapshot is capped
+at 16 KiB, including at most 6 KiB of recalled facts. Native request paths have
+128 KiB input limits. These are separate bounds, not a guarantee that every tool
+turn or image decoding allocation fits in 128 KiB.
+
+The next context optimization should add one measured assembly budget with
+per-category reservations, separate media budgets, source references for omitted
+material, and per-turn byte/peak reporting. Important identity instructions,
+current intent and durable action receipts must survive compaction; historical
+observations can stay on disk and be expanded on demand. Do not introduce an
+always-resident vector index, or assume that summarizing everything into one
+ever-growing text is memory management. Whole-file JSON loading and duplicated
+serialization buffers still need measurement before choosing an optimization.
