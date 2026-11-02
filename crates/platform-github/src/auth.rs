@@ -92,7 +92,7 @@ impl Client {
         if (300..400).contains(&status) {
             return Err(Error::RedirectDenied);
         }
-        if status != 200 {
+        if status != 200 && status != 400 {
             return Err(Error::HttpStatus(status));
         }
         if response
@@ -114,7 +114,12 @@ impl Client {
         if bytes.len() as u64 > MAX_BODY {
             return Err(Error::Limit);
         }
-        serde_json::from_slice(&bytes).map_err(|_| Error::Schema("OAuth response"))
+        let value: Value =
+            serde_json::from_slice(&bytes).map_err(|_| Error::Schema("OAuth response"))?;
+        if status == 400 && !value["error"].is_string() {
+            return Err(Error::HttpStatus(400));
+        }
+        Ok(value)
     }
     pub fn start(&self) -> Result<DeviceFlow> {
         let value = self.post(
@@ -180,8 +185,14 @@ impl Client {
                 ("grant_type", "refresh_token"),
             ],
         )?;
-        if value.get("error").is_some() {
-            return Err(Error::LoginRequired);
+        if let Some(error) = value["error"].as_str() {
+            return Err(match error {
+                "bad_refresh_token"
+                | "expired_refresh_token"
+                | "invalid_grant"
+                | "expired_token" => Error::LoginRequired,
+                _ => Error::Schema("OAuth refresh rejected"),
+            });
         }
         tokens(&value)
     }
@@ -256,6 +267,7 @@ mod tests {
                 json!({"error":"slow_down","interval":10}),
                 json!({"access_token":"synthetic-access","token_type":"bearer","scope":"read:user","expires_in":28800,"refresh_token":"synthetic-refresh","refresh_token_expires_in":15_552_000}),
                 json!({"access_token":"synthetic-rotated","token_type":"bearer","scope":"read:user","expires_in":28800,"refresh_token":"synthetic-next-refresh","refresh_token_expires_in":15_552_000}),
+                json!({"error":"bad_refresh_token"}),
             ];
             for (i, value) in responses.into_iter().enumerate() {
                 let (mut stream, _) = listener.accept().unwrap();
@@ -298,7 +310,7 @@ mod tests {
                     assert!(request.contains("refresh_token=synthetic-refresh"));
                 }
                 let body = value.to_string();
-                write!(stream,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",body.len(),body).unwrap();
+                write!(stream,"HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",if i==5{"400 Bad Request"}else{"200 OK"},body.len(),body).unwrap();
             }
         });
         let mut client = Client::new(DEFAULT_CLIENT_ID).unwrap();
@@ -322,6 +334,10 @@ mod tests {
             .refresh(tokens.refresh_token.as_deref().unwrap())
             .unwrap();
         assert_eq!(rotated.access_token, "synthetic-rotated");
+        assert_eq!(
+            client.refresh("synthetic-refresh").err(),
+            Some(Error::LoginRequired)
+        );
         worker.join().unwrap();
     }
     #[test]
