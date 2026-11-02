@@ -116,6 +116,10 @@ enum Stage {
     QqQr(QrWorker),
     Password,
     Engine,
+    GithubDevice {
+        client: platform_github::auth::Client,
+        device: platform_github::auth::DeviceFlow,
+    },
 }
 struct Flow {
     id: String,
@@ -161,7 +165,7 @@ impl Flow {
             .min(now()? + 900);
         result.expires_at = Some(expiry);
         if !result.status.is_terminal() {
-            result.poll_after_ms = Some(result.poll_after_ms.unwrap_or(1000).clamp(250, 10_000));
+            result.poll_after_ms = Some(result.poll_after_ms.unwrap_or(1000).clamp(250, 60_000));
         }
         self.deadline = self
             .deadline
@@ -357,9 +361,10 @@ impl LoginController {
         // expiry. The adapter only returns needs_auth for explicit expiry.
         // A person may explicitly refresh the same alias's X web session.
         // Auto never turns a denied/rate-limited request into a fresh login.
-        let explicit_x_refresh =
-            request.platform == Platform::X && requested == LoginMethod::Browser;
-        if !explicit_x_refresh {
+        let explicit_refresh = request.platform == Platform::X && requested == LoginMethod::Browser
+            || request.platform == Platform::Github
+                && matches!(requested, LoginMethod::Device | LoginMethod::Token);
+        if !explicit_refresh {
             let reused = self
                 .runtime(&request.account)?
                 .operator_reuse_login(request.platform.name())?;
@@ -376,6 +381,35 @@ impl LoginController {
         } else {
             requested
         };
+        if request.platform == Platform::Github && method == LoginMethod::Device {
+            if request.account == "public" {
+                return encode(failed(
+                    "account_required",
+                    "Choose a personal account alias before GitHub authorization.",
+                ));
+            }
+            // Acquire the same private state lock before asking for consent,
+            // including an explicitly requested reauthorization.
+            let _ = self.runtime(&request.account)?;
+            let client_id = std::env::var("GLIMLINK_GITHUB_CLIENT_ID")
+                .unwrap_or_else(|_| platform_github::auth::DEFAULT_CLIENT_ID.into());
+            let client =
+                platform_github::auth::Client::new(&client_id).map_err(|e| e.to_string())?;
+            let device = client.start().map_err(|e| e.to_string())?;
+            let mut result = LoginResult::new(LoginStatus::Pending);
+            result.method = Some(LoginMethod::Device);
+            result.expires_at = Some(now()?.saturating_add(device.expires_in));
+            result.poll_after_ms = Some(device.interval * 1000);
+            result.authorization=Some(runtime_control::Authorization{url:Some(platform_github::auth::VERIFICATION_URL.into()),user_code:Some(device.user_code.clone()),expires_at:result.expires_at,message:Some("Authorize Glimlink in your browser. Enter the short code shown here; no personal token or app registration is required.".into())});
+            let mut flow = Flow::new(
+                request.platform,
+                &request.account,
+                method,
+                Stage::GithubDevice { client, device },
+            )?;
+            flow.update(result)?;
+            return self.retain(flow);
+        }
         let input_kind = if request.platform == Platform::Github {
             Some(SecretInputKind::Token)
         } else if request.platform == Platform::X {
@@ -525,6 +559,29 @@ impl LoginController {
                 flow.update(
                     serde_json::from_value(raw).map_err(|_| "invalid engine login result")?,
                 )?;
+            }
+            Stage::GithubDevice { client, device } => {
+                let result = match client.poll(device).map_err(|e| e.to_string())? {
+                    platform_github::auth::Poll::Pending => {
+                        flow.result.poll_after_ms = Some(device.interval * 1000);
+                        flow.next_poll = Instant::now() + Duration::from_secs(device.interval);
+                        return Ok(());
+                    }
+                    platform_github::auth::Poll::Denied => failed(
+                        "authorization_denied",
+                        "GitHub authorization was cancelled. Existing account state was retained.",
+                    ),
+                    platform_github::auth::Poll::Expired => failed(
+                        "login_expired",
+                        "GitHub authorization expired. Start login again.",
+                    ),
+                    platform_github::auth::Poll::Authorized(tokens) => normalize(
+                        &self
+                            .runtime(&flow.account)?
+                            .github_oauth_login(tokens, client.client_id())?,
+                    )?,
+                };
+                flow.update(result)?;
             }
             Stage::Password => {
                 let runtime = self.runtime(&flow.account)?;
@@ -697,7 +754,7 @@ fn capabilities(platform: Platform) -> LoginCapabilities {
     let (methods, reuse, import_login, preferred_method, paused, message) = match platform {
         Platform::Bilibili | Platform::Tieba => (vec![LoginMethod::Qr], true, true, Some(LoginMethod::Qr), false, None),
         Platform::Qq => (vec![LoginMethod::Password, LoginMethod::Qr], true, true, Some(LoginMethod::Password), false, None),
-        Platform::Github => (vec![], true, true, None, false, Some("Use an explicitly supplied GitHub token; no OAuth app/client ID is bundled.".into())),
+        Platform::Github => (vec![LoginMethod::Device, LoginMethod::Token], true, true, Some(LoginMethod::Device), false, Some("Authorize the project-provided Glimlink application in your system browser. Existing accounts are reused; private token import remains optional.".into())),
         Platform::X => (vec![LoginMethod::Auto, LoginMethod::Browser], true, true, Some(LoginMethod::Auto), false, Some("Reuse the saved X web session first. Explicit browser mode refreshes it through private operator input; only auth_token and ct0 are needed. No developer API key or automatic new-device login.".into())),
         Platform::Codex => (vec![LoginMethod::Device], true, false, Some(LoginMethod::Device), false, Some("Native subscription login; one dedicated credential home per engine in this Runtime.".into())),
         Platform::Antigravity => (vec![LoginMethod::Browser], true, false, Some(LoginMethod::Browser), false, Some("Native Google subscription login; the browser and one-time code input run on the operator client.".into())),
@@ -855,6 +912,21 @@ mod tests {
         std::env::temp_dir().join(format!("login-{name}-{}", std::process::id()))
     }
     #[test]
+    fn project_github_authorization_needs_no_configuration_and_rejects_public_alias_before_network()
+    {
+        let caps = capabilities(Platform::Github);
+        assert_eq!(caps.preferred_method, Some(LoginMethod::Device));
+        assert!(caps.methods.contains(&LoginMethod::Token));
+        assert!(!platform_github::auth::DEFAULT_CLIENT_ID.is_empty());
+        let path = state("github-public-device");
+        let mut control = LoginController::new(&path).unwrap();
+        let mut request = Request::new(1, Platform::Github, "public".into(), Action::Login);
+        request.params = json!({"method":"device"});
+        let value = control.execute(&request, &mut |_, _| Ok(())).unwrap();
+        assert_eq!(value["error"]["code"], "account_required");
+        assert!(control.active.is_none() && control.runtime.is_none());
+    }
+    #[test]
     fn explicit_x_refresh_requests_private_input_without_touching_saved_state() {
         let path = state("x-explicit-refresh");
         let dir = crate::private_state::account_directory(&path, "x", "owner").unwrap();
@@ -884,6 +956,7 @@ mod tests {
         let path = state("binding");
         let mut control = LoginController::new(&path).unwrap();
         let mut start = Request::new(1, Platform::Github, "owner".into(), Action::Login);
+        start.params = json!({"method":"token"});
         let first = control.execute(&start, &mut |_, _| Ok(())).unwrap();
         assert_eq!(first["status"], "verification_required");
         assert_eq!(first["input_required"]["kind"], "token");
@@ -944,7 +1017,8 @@ mod tests {
     fn expiry_and_disconnect_keep_saved_credentials_and_stop_the_active_flow() {
         let path = state("expiry");
         let mut control = LoginController::new(&path).unwrap();
-        let start = Request::new(1, Platform::Github, "owner".into(), Action::Login);
+        let mut start = Request::new(1, Platform::Github, "owner".into(), Action::Login);
+        start.params = json!({"method":"token"});
         let first = control.execute(&start, &mut |_, _| Ok(())).unwrap();
         let dir = crate::private_state::account_directory(&path, "github", "owner").unwrap();
         let saved = dir.join("session.json");

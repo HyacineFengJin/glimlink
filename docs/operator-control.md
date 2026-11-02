@@ -181,7 +181,7 @@ session refresh without first checking the old session. This is a human-selected
 action; auto mode does not reinterpret a 403/rate limit as session expiry. Old
 saved state and its stable identity binding are retained until successful
 verification of the replacement. The desktop offers a fixed-URL system-browser
-entry first, with manual one-paste import on return; ordinary navigation cannot
+entry first, with a two-value import guide on return; ordinary navigation cannot
 transfer that independent browser's HttpOnly cookies to the operator. Its
 optional separate client-only X login window can instead forward the two
 required cookies directly from Rust through the same local/SSH pipe. It neither embeds a browser into the
@@ -226,3 +226,13 @@ Runtime component or a browser bundled with a VPS release.
 
 Conversation, profile, activity and scoped chat-command management use the separate
 [control endpoint](control-console.md), without the login endpoint’s kernel lock.
+
+
+GitHub defaults to the project's registered public Glimlink application and the
+provider's device authorization flow; deployment does not require app registration.
+`github login --method token` and explicit private files remain optional import
+paths. Browser authorization exposes only the verification URL and user code;
+device codes, access tokens and refresh tokens stay in the Runtime/control pipe.
+The same account alias cannot be rebound to another GitHub identity. Expiring
+credentials rotate in one private atomic session file while that Runtime owns
+state; no background refresh service is added.

@@ -12,7 +12,7 @@ const platforms = [
   { id: 'bilibili', name: 'Bilibili', kind: 'social', label: '视频与社区', tone: 'rose', description: '视频、动态与评论' },
   { id: 'qq', name: 'QQ', kind: 'social', label: '聊天', tone: 'blue', description: '消息、群聊与附件' },
   { id: 'tieba', name: '贴吧', kind: 'social', label: '社区', tone: 'indigo', description: '帖子与楼中楼讨论' },
-  { id: 'x', name: 'X', kind: 'social', label: '网页会话', tone: 'carbon', description: '复用会话，或私密导入浏览器 Cookie' },
+  { id: 'x', name: 'X', kind: 'social', label: '网页会话', tone: 'carbon', description: '在浏览器登录，再导入账号' },
   { id: 'github', name: 'GitHub', kind: 'application', label: '开发协作', tone: 'stone', description: '仓库、Issue 与 PR' },
   { id: 'codex', name: 'Codex', kind: 'agent', label: '订阅登录', tone: 'sage', description: '原生 Codex 订阅 · 共享人格与记忆' },
   { id: 'antigravity', name: 'Antigravity', kind: 'agent', label: '订阅登录', tone: 'iris', description: 'Google 订阅授权 · 共享人格与记忆' },
@@ -32,7 +32,7 @@ let refreshing = false;
 let connectionDirty = false;
 let generation = 0;
 let requiredInput = null;
-let cookieInputMode = 'header';
+let cookieInputMode = 'fields';
 let xWindowOpening = null;
 let xBrowserOpening = null;
 let toastTimer = null;
@@ -240,7 +240,7 @@ function render() {
     const detail = element('p', 'account-detail', state.detail);
     detail.title = state.detail;
     const actions = element('div', 'account-actions');
-    const login = element('button', 'login-button', paused ? '暂停测试' : current ? (active.id ? '取消登录' : '正在启动…') : state.status === 'authenticated' || state.status === 'online' ? '核验与复用 ↗' : platform.id === 'github' ? '在浏览器中获取 Token ↗' : platform.id === 'x' ? '复用 / 导入 ↗' : '在浏览器中登录 ↗');
+    const login = element('button', 'login-button', paused ? '暂停测试' : current ? (active.id ? '取消登录' : '正在启动…') : state.status === 'authenticated' || state.status === 'online' ? '核验与复用 ↗' : platform.id === 'github' ? '在浏览器中授权 ↗' : platform.id === 'x' ? '连接 X ↗' : '在浏览器中登录 ↗');
     login.disabled = !bridge || paused || refreshing || connectionDirty || (active && !current) || (current && !active.id);
     login.addEventListener('click', () => current ? cancelLogin() : beginLogin(platform.id, platform.id === 'qq' ? 'qr' : 'auto'));
     const check = element('button', 'account-check');
@@ -255,8 +255,11 @@ function render() {
       const stop = element('button','login-worker-stop','停止后台后登录');stop.type='button';stop.disabled=!bridge || Boolean(active) || refreshing || connectionDirty;
       stop.addEventListener('click',()=>stopWorkerAndLogin(platform.id));card.append(stop);
     }
+    if (platform.id === 'github') {
+      const manual=element('button','x-refresh-login','使用已有 Token');manual.type='button';manual.disabled=!bridge || Boolean(active) || refreshing || connectionDirty;manual.addEventListener('click',()=>beginLogin('github','token'));card.append(manual);
+    }
     if (platform.id === 'x') {
-      const update = element('button', 'x-refresh-login', '更新网页登录态');
+      const update = element('button', 'x-refresh-login', '重新登录');
       update.type = 'button';
       update.disabled = !bridge || paused || refreshing || connectionDirty || Boolean(active);
       update.addEventListener('click', () => beginLogin(platform.id, 'browser'));
@@ -371,11 +374,22 @@ function clearPrivateFields() {
 }
 function clearInput() {
   clearPrivateFields();
+  $('#x-import-details').open = false;
+  $('#x-native-details').open = false;
   $('#input-error').textContent = '';
   $('#x-window-feedback').textContent = '';
   $('#x-browser-feedback').textContent = '';
   if ($('#input-dialog').open) $('#input-dialog').close();
   requiredInput = null;
+}
+function syncCookieImport() {
+  const cookies = requiredInput?.kind === 'cookies';
+  const importing = cookies && $('#x-import-details').open;
+  for (const [selector, selected] of [['#input-cookie-header', cookieInputMode === 'header'], ['#input-auth-token', cookieInputMode === 'fields'], ['#input-ct0', cookieInputMode === 'fields']]) {
+    $(selector).disabled = !importing || !selected;
+    $(selector).required = importing && selected;
+  }
+  $('#input-submit').hidden = cookies && !importing;
 }
 function setCookieInputMode(mode) {
   if (!['header', 'fields'].includes(mode)) return;
@@ -383,22 +397,23 @@ function setCookieInputMode(mode) {
   clearPrivateFields();
   $('#cookie-header-field').hidden = mode !== 'header';
   $('#cookie-pair-fields').hidden = mode !== 'fields';
-  for (const [selector, selected] of [['#input-cookie-header', mode === 'header'], ['#input-auth-token', mode === 'fields'], ['#input-ct0', mode === 'fields']]) {
-    $(selector).disabled = requiredInput?.kind !== 'cookies' || !selected;
-    $(selector).required = requiredInput?.kind === 'cookies' && selected;
-  }
+  $('#cookie-header-guide').hidden = mode !== 'header';
+  $('#cookie-pair-guide').hidden = mode !== 'fields';
+  syncCookieImport();
   document.querySelectorAll('[data-cookie-mode]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.cookieMode === mode)));
 }
 async function openXWindow() {
   if (requiredInput?.kind !== 'cookies' || active?.platform !== 'x' || active.id !== requiredInput.loginId || xWindowOpening) return;
   const loginId = active.id;
   clearPrivateFields();
+  $('#x-import-details').open = false;
+  syncCookieImport();
   xWindowOpening = loginId;
   $('#x-window-open').disabled = true;
   $('#x-window-feedback').textContent = '正在打开专用登录窗口…';
   try {
     await invoke('open_x_login_window', { loginId });
-    if (requiredInput?.loginId === loginId) $('#x-window-feedback').textContent = '在 X 窗口内正常登录，完成后自动交给 Runtime 核验。';
+    if (requiredInput?.loginId === loginId) $('#x-window-feedback').textContent = '请在 X 窗口正常登录，无需复制信息。完成后等待这里显示核验结果。';
   } catch (error) {
     if (requiredInput?.loginId === loginId) $('#x-window-feedback').textContent = `窗口未打开 (${publicCode(error)})，可以继续私密导入。`;
   } finally {
@@ -413,7 +428,7 @@ async function openXBrowser() {
   $('#x-browser-open').disabled = true;
   try {
     await invoke('open_x_in_browser', { loginId });
-    if (requiredInput?.loginId === loginId) $('#x-browser-feedback').textContent = '在系统浏览器登录后回到这里，一次粘贴 Cookie 请求头。不会自动读取外部浏览器，也没有自动回调。';
+    if (requiredInput?.loginId === loginId) {$('#x-import-details').open=true;syncCookieImport();$('#x-browser-feedback').textContent = '浏览器已打开。登录后按下方步骤复制两项信息，再点“验证并连接”；不会自动回传。';}
   } catch (error) {
     if (requiredInput?.loginId === loginId) $('#x-browser-feedback').textContent = `浏览器未打开 (${publicCode(error)})，可以继续私密导入。`;
   } finally {
@@ -423,20 +438,20 @@ async function openXBrowser() {
 function showInput(data, loginId) {
   if (!active || active.id !== loginId) return;
   const kind = data.kind;
-  const names = { password: ['输入 QQ 登录信息', '密码'], authorization_code: ['完成订阅授权', '一次性授权码'], token: ['连接 GitHub 账号', '访问 Token'], session: ['导入已有登录态', '本机私密文件路径'], cookies: ['导入 X 网页会话', '浏览器 Cookie'] };
+  const names = { password: ['输入 QQ 登录信息', '密码'], authorization_code: ['完成订阅授权', '一次性授权码'], token: ['连接 GitHub 账号', '访问 Token'], session: ['导入已有登录态', '本机私密文件路径'], cookies: ['连接 X 账号', '浏览器登录信息'] };
   if (!names[kind]) { toast('这个输入类型尚未支持，请取消本次登录。'); return; }
   clearInput(); requiredInput = { kind, loginId };
   $('#input-platform').textContent = `${platformFor(active.platform).name} · 私密输入`;
   $('#input-title').textContent = names[kind][0];
   $('#input-label').textContent = names[kind][1];
-  $('#input-message').textContent = kind === 'cookies' ? '可跳转系统浏览器登录，也可使用内置窗口。已有登录可手动复制会话导入；不会自动读取外部浏览器。' : data.message || '通过当前私有控制通道提交，不进入 AI 上下文。';
+  $('#input-message').textContent = kind === 'cookies' ? '用浏览器完成登录，再把这个账号连接到 Runtime。' : data.message || '通过当前私有控制通道提交，不进入 AI 上下文。';
   $('#uin-field').hidden = kind !== 'password';
   $('#input-value-field').hidden = kind === 'cookies';
   $('#input-value').required = kind !== 'cookies';
   $('#input-value').disabled = kind === 'cookies';
   $('#cookie-fields').hidden = kind !== 'cookies';
-  setCookieInputMode('header');
-  $('#x-browser-feedback').textContent = '可复用浏览器已有登录。完成后返回这里，一次粘贴会话。';
+  setCookieInputMode('fields');
+  $('#input-submit-label').textContent = kind === 'cookies' ? '验证并连接' : '安全提交';
   $('#input-value').type = kind === 'session' ? 'text' : 'password';
   $('#input-value').placeholder = kind === 'session' ? '/private/account-session.json' : '';
   $('#input-privacy').textContent = kind === 'session' ? '文件只从操控端读取。请使用权限 0600 的私有普通文件。' : kind === 'cookies' ? '仅通过私有控制通道交给 Runtime，不进入 AI 对话、活动记录或本页持久存储。提交后立即清空。' : '只用于当前登录。提交后立即清空本页输入。';
@@ -450,6 +465,7 @@ async function submitInput(event) {
   const input = $('#input-value');
   let value = input.value;
   if (kind === 'cookies') {
+    if (!$('#x-import-details').open) return;
     if (cookieInputMode === 'header') {
       value = $('#input-cookie-header').value.trim();
       if (!value) { $('#input-error').textContent = '请粘贴完整 Cookie 请求头，或改为分别填写。'; return; }
@@ -509,6 +525,10 @@ function handleLoginEvent(payload) {
     }
   } else if (payload.kind === 'progress') {
     if (data.private_input_submitted === true) clearInput();
+    if (data.browser_handoff === true && requiredInput?.kind === 'cookies' && active.platform === 'x') {
+      $('#x-native-details').open=false;$('#x-import-details').open=true;syncCookieImport();
+      $('#x-browser-feedback').textContent='浏览器已打开。登录后按下方步骤复制两项信息，再点“验证并连接”；不会自动回传。';
+    }
     state.status = data.status || 'pending';
     state.detail = data.challenge ? '请在登录验证窗口中手动完成验证。' : data.qr ? '请在登录窗口扫码，并在手机上确认。' : data.message || '等待平台确认，核心保持当前认证会话。';
   }
@@ -563,6 +583,10 @@ $('#input-form').addEventListener('submit', submitInput);
 $('#x-window-open').addEventListener('click', openXWindow);
 $('#x-browser-open').addEventListener('click', openXBrowser);
 document.querySelectorAll('[data-cookie-mode]').forEach((button) => button.addEventListener('click', () => setCookieInputMode(button.dataset.cookieMode)));
+$('#x-import-details').addEventListener('toggle', () => {
+  if (requiredInput?.kind === 'cookies' && !$('#x-import-details').open) clearPrivateFields();
+  syncCookieImport();
+});
 for (const selector of ['#input-close', '#input-cancel']) $(selector).addEventListener('click', cancelLogin);
 $('#input-dialog').addEventListener('cancel', (event) => { event.preventDefault(); cancelLogin(); });
 window.addEventListener('pagehide', clearPrivateFields);

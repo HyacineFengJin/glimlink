@@ -2,6 +2,7 @@
 //! Bounded GitHub REST adapter. No browser, arbitrary endpoints, automatic write
 //! retry, Link following, account discovery, or durable operation policy.
 //! Response strings (including Markdown and URLs) remain untrusted platform data.
+pub mod auth;
 mod actions;
 mod model;
 pub use actions::{CollaborationAction, ReviewLine};

@@ -115,7 +115,7 @@
   </div>
 
   <dialog id="agent-settings-dialog" class="agent-drawer"><div class="drawer-heading"><h2>Agent 设置</h2><button id="agent-controls-close" type="button" class="small-button">完成</button></div><div id="agent-settings-body"></div></dialog>
-  <dialog id="input-dialog" class="input-dialog">
+  <dialog id="input-dialog" class="input-dialog" aria-labelledby="input-title" aria-describedby="input-message">
     <form id="input-form">
       <button class="dialog-close" id="input-close" type="button" aria-label="取消输入并取消登录">×</button>
       <div class="dialog-symbol">↗</div>
@@ -125,21 +125,54 @@
       <label class="field" id="uin-field" hidden><span>QQ 账号</span><input id="input-uin" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="16"></label>
       <label class="field" id="input-value-field"><span id="input-label">验证信息</span><input id="input-value" type="password" autocomplete="off" spellcheck="false" maxlength="262144" required></label>
       <div id="cookie-fields" hidden>
-        <button id="x-browser-open" class="filled-button x-window-open" type="button">在系统浏览器打开 X <span>↗</span></button>
-        <p id="x-browser-feedback" class="x-window-feedback" role="status">可复用浏览器已有登录。完成后返回这里，一次粘贴会话。</p>
-        <button id="x-window-open" class="filled-button x-window-open native-login-button" type="button">或使用内置 X 登录窗口 <span>↗</span></button>
-        <p id="x-window-feedback" class="x-window-feedback" role="status"></p>
-        <div class="cookie-import-divider">或私密导入已有浏览器会话</div>
-        <p class="cookie-import-help">从已登录 x.com 的浏览器开发者工具复制完整 Cookie 请求头，一次粘贴即可。也可分别填写所需字段。</p>
-        <div class="cookie-mode-control" role="group" aria-label="Cookie 导入方式"><button type="button" data-cookie-mode="header" aria-pressed="true">一次粘贴</button><button type="button" data-cookie-mode="fields" aria-pressed="false">分别填写</button></div>
-        <label class="field" id="cookie-header-field"><span>Cookie 请求头</span><input id="input-cookie-header" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="32768" disabled></label>
-        <div id="cookie-pair-fields" hidden>
-          <label class="field"><span>auth_token</span><input id="input-auth-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="4096" disabled></label>
-          <label class="field"><span>ct0</span><input id="input-ct0" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="512" disabled></label>
+        <div class="x-login-route">
+          <div class="x-route-heading"><h3>在系统浏览器中登录</h3><span>可使用 Google / Apple</span></div>
+          <p>在浏览器中完成 X 登录，然后按下方步骤导入这个账号。目前使用网页登录信息，尚未接入 X 官方应用授权。</p>
+          <button id="x-browser-open" class="filled-button x-window-open" type="button">打开浏览器登录 X <span>↗</span></button>
+          <p id="x-browser-feedback" class="x-window-feedback" role="status"></p>
         </div>
+        <details id="x-import-details" class="x-import-route">
+          <summary><span>使用浏览器里已登录的账号</span><span class="x-import-tag">手动导入</span></summary>
+          <div class="x-import-body">
+            <p>这条方式需要手动复制登录信息。只在 Chrome 等浏览器中登录，不会自动连接到 Runtime。</p>
+            <div class="cookie-mode-control" role="group" aria-label="登录信息导入方式"><button type="button" data-cookie-mode="fields" aria-pressed="true">复制两项信息</button><button type="button" data-cookie-mode="header" aria-pressed="false">Cookie 整行（高级）</button></div>
+            <div id="cookie-pair-guide" class="cookie-import-guide">
+              <h4>从 Chrome 获取这两项</h4>
+              <ol>
+                <li>在 x.com 登录你的账号。</li>
+                <li>右键网页 → 检查 → 应用（Application）。找不到这个标签时，点开发者工具顶部的 »。</li>
+                <li>左侧展开 Cookie，选择 https://x.com。</li>
+                <li>找到 auth_token 和 ct0，分别复制“值（Value）”列的完整内容，粘贴到下面。不要修改或删除浏览器里的值。</li>
+              </ol>
+            </div>
+            <div id="cookie-header-guide" class="cookie-import-guide" hidden>
+              <h4>Cookie 请求头是什么？</h4>
+              <p>它是浏览器请求 X 时携带的登录信息，形如 auth_token=…; ct0=…。它不是密码，也不是网页地址。</p>
+              <ol>
+                <li>在已登录的 x.com 打开开发者工具 → 网络（Network），然后刷新页面。</li>
+                <li>选择一条发往 x.com 的请求，在“标头（Headers）→ 请求标头（Request Headers）”中找到 Cookie，复制它的整段值。</li>
+                <li>粘贴到下方，只需 Cookie 这一项，不要复制整个请求或 cURL 命令。</li>
+              </ol>
+            </div>
+            <label class="field" id="cookie-header-field" hidden><span>Cookie 整行内容</span><input id="input-cookie-header" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="32768" placeholder="粘贴 Cookie 的整段值" disabled></label>
+            <div id="cookie-pair-fields">
+              <label class="field"><span translate="no">auth_token</span><input id="input-auth-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="4096" placeholder="粘贴 auth_token 的值，不是名称" disabled></label>
+              <label class="field"><span translate="no">ct0</span><input id="input-ct0" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="512" placeholder="粘贴 ct0 的值，不是名称" disabled></label>
+            </div>
+            <p class="x-import-privacy">这两项相当于登录凭据，只粘贴在这里，不要发到聊天或截图中。</p>
+          </div>
+        </details>
+        <details id="x-native-details" class="x-import-route">
+          <summary><span>其他方式：X 账号密码</span></summary>
+          <div class="x-import-body">
+            <p>此窗口仅供直接输入 X 账号和密码。Google / Apple 登录请使用上方的系统浏览器。</p>
+            <button id="x-window-open" class="text-button x-window-open" type="button">打开 X 账号登录窗口 <span>↗</span></button>
+            <p id="x-window-feedback" class="x-window-feedback" role="status"></p>
+          </div>
+        </details>
       </div>
       <p class="dialog-privacy" id="input-privacy">只用于当前登录。提交后立即清空本页输入。</p>
-      <div class="dialog-actions"><button class="text-button" id="input-cancel" type="button">取消登录</button><button class="filled-button" id="input-submit" type="submit">安全提交 <span>↗</span></button></div>
+      <div class="dialog-actions"><button class="text-button" id="input-cancel" type="button">取消登录</button><button class="filled-button" id="input-submit" type="submit"><span id="input-submit-label">安全提交</span><span>↗</span></button></div>
       <p id="input-error" class="input-error" role="alert"></p>
     </form>
   </dialog>

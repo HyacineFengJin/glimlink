@@ -724,6 +724,9 @@ impl DesktopUi {
     }
 }
 fn authorization_url(url: &str) -> bool {
+    if url == "https://github.com/login/device" {
+        return true;
+    }
     if url.len() > 16384 || url.chars().any(char::is_control) {
         return false;
     }
@@ -902,6 +905,11 @@ mod tests {
     }
     #[test]
     fn provider_links_cannot_become_arbitrary_shell_or_file_actions() {
+        assert!(authorization_url("https://github.com/login/device"));
+        assert!(!authorization_url(
+            "https://github.com/login/device?redirect=evil"
+        ));
+        assert!(!authorization_url("https://github.com/anything"));
         assert!(authorization_url(
             "https://accounts.google.com/o/oauth2/auth?state=synthetic"
         ));

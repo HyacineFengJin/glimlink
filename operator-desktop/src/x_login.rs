@@ -77,6 +77,7 @@ struct Run {
     serial: u64,
     label: String,
     stop: Arc<AtomicBool>,
+    external_opened: AtomicBool,
 }
 #[derive(Default)]
 struct Shared {
@@ -125,6 +126,31 @@ impl Policy {
 fn progress(app: &AppHandle, id: &str, message: &'static str, submitted: bool) {
     let _ = app.emit_to(tauri::EventTarget::webview_window("main"), "operator-login",
         json!({"login_id":id,"platform":"x","kind":"progress","data":{"status":if submitted { "pending" } else { "verification_required" },"message":message,"private_input_submitted":submitted}}));
+}
+fn external_signin(url: &Url) -> bool {
+    url.as_str() == "about:blank"
+        || url.scheme() == "https"
+            && matches!(
+                url.host_str(),
+                Some("accounts.google.com" | "appleid.apple.com")
+            )
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.port().is_none()
+}
+fn handoff_browser(app: AppHandle, id: String, run: Arc<Run>) {
+    if run.stop.load(Ordering::Relaxed) || run.external_opened.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    let _ = thread::Builder::new().name("operator-x-browser".into()).spawn(move || {
+        // Start the complete X login in a normal browser, rather than opening
+        // an OAuth popup URL tied to a different WebView session/opener.
+        let opened = crate::bridge::open_browser(LOGIN_URL).is_ok();
+        run.stop.store(true,Ordering::Relaxed);
+        destroy(&app,&run.label);
+        let message = if opened {"请在系统浏览器完成 X 登录，可以使用 Google / Apple。然后按操控端的步骤导入账号。"} else {"请打开系统浏览器访问 x.com，完成登录后按操控端步骤导入账号。"};
+        let _ = app.emit_to(tauri::EventTarget::webview_window("main"),"operator-login",json!({"login_id":id,"platform":"x","kind":"progress","data":{"status":"verification_required","message":message,"browser_handoff":true}}));
+    });
 }
 fn destroy(app: &AppHandle, label: &str) {
     if let Some(window) = app.get_webview_window(label) {
@@ -179,6 +205,7 @@ impl Windows {
                 serial,
                 label: format!("x-login-{serial}"),
                 stop: Arc::new(AtomicBool::new(false)),
+                external_opened: AtomicBool::new(false),
             });
             *active = Some(run.clone());
             run
@@ -186,29 +213,45 @@ impl Windows {
         let navigation = policy.clone();
         let handle = app.clone();
         let id = ticket.id().to_owned();
-        let builder =
-            WebviewWindowBuilder::new(&app, &run.label, WebviewUrl::External(policy.url.clone()))
-                .title("X · 人工登录 · 完成后自动核验")
-                .inner_size(520.0, 740.0)
-                .min_inner_size(400.0, 560.0)
-                .center()
-                .incognito(true)
-                .devtools(false)
-                .on_navigation(move |url| {
-                    let allowed = navigation.permits(url);
-                    if !allowed {
-                        progress(
-                            &handle,
-                            &id,
-                            "登录窗口仅允许 x.com。Google 等外部登录请在系统浏览器完成后手工导入。",
-                            false,
-                        );
-                    }
-                    allowed
-                })
-                .on_new_window(|_, _| NewWindowResponse::Deny)
-                .on_download(|_, _| false)
-                .on_permission_request(|_, _| PermissionResponse::Deny);
+        let navigation_run = run.clone();
+        let popup_app = app.clone();
+        let popup_id = id.clone();
+        let popup_run = run.clone();
+        let builder = WebviewWindowBuilder::new(
+            &app,
+            &run.label,
+            WebviewUrl::External(policy.url.clone()),
+        )
+        .title("X · 人工登录 · 完成后自动核验")
+        .inner_size(520.0, 740.0)
+        .min_inner_size(400.0, 560.0)
+        .center()
+        .incognito(true)
+        .devtools(false)
+        .on_navigation(move |url| {
+            let allowed = navigation.permits(url);
+            if !allowed && external_signin(url) {
+                handoff_browser(handle.clone(), id.clone(), navigation_run.clone());
+                return false;
+            }
+            if !allowed {
+                progress(
+                    &handle,
+                    &id,
+                    "此窗口只支持 X 账号密码；Google / Apple 登录请使用操控端的系统浏览器入口。",
+                    false,
+                );
+            }
+            allowed
+        })
+        .on_new_window(move |url, _| {
+            if external_signin(&url) {
+                handoff_browser(popup_app.clone(), popup_id.clone(), popup_run.clone());
+            }
+            NewWindowResponse::Deny
+        })
+        .on_download(|_, _| false)
+        .on_permission_request(|_, _| PermissionResponse::Deny);
         let window = match builder.build() {
             Ok(window) => window,
             Err(_) => {
@@ -396,6 +439,27 @@ mod tests {
             .secure(true)
             .http_only(true)
             .build()
+    }
+    #[test]
+    fn external_signin_handoff_cannot_open_supplied_urls_or_credentials() {
+        for url in [
+            "about:blank",
+            "https://accounts.google.com/gsi/select",
+            "https://appleid.apple.com/auth/authorize",
+        ] {
+            assert!(external_signin(&url.parse().unwrap()));
+        }
+        for url in [
+            "https://accounts.google.com.evil/",
+            "https://accounts.google.com@evil/",
+            "https://user@accounts.google.com/",
+            "https://accounts.google.com:444/",
+            "file:///tmp/auth.html",
+            "http://accounts.google.com/",
+            "https://evil.invalid/",
+        ] {
+            assert!(!external_signin(&url.parse().unwrap()));
+        }
     }
     #[test]
     fn exact_https_x_navigation_has_no_external_or_local_escape() {

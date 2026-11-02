@@ -112,6 +112,53 @@ struct Session {
     token: String,
     id: u64,
     login: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    oauth: Option<OAuthSession>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OAuthSession {
+    client_id: String,
+    expires_at: Option<u64>,
+    refresh_token: Option<String>,
+    refresh_expires_at: Option<u64>,
+    scope: String,
+}
+impl OAuthSession {
+    fn from_tokens(
+        tokens: &platform_github::auth::Tokens,
+        client_id: &str,
+        now: u64,
+    ) -> Result<Self> {
+        let expiry = |seconds: Option<u64>| {
+            seconds
+                .map(|n| now.checked_add(n).ok_or("invalid GitHub OAuth expiry"))
+                .transpose()
+        };
+        let value = Self {
+            client_id: client_id.into(),
+            expires_at: expiry(tokens.expires_in)?,
+            refresh_token: tokens.refresh_token.clone(),
+            refresh_expires_at: expiry(tokens.refresh_expires_in)?,
+            scope: tokens.scope.clone(),
+        };
+        value.validate()?;
+        Ok(value)
+    }
+    fn validate(&self) -> Result<()> {
+        if !platform_github::auth::valid_client_id(&self.client_id)
+            || self.scope.len() > 2048
+            || self.scope.chars().any(char::is_control)
+            || self.refresh_token.as_ref().is_some_and(|s| {
+                s.is_empty() || s.len() > 4096 || !s.bytes().all(|b| b.is_ascii_graphic())
+            })
+            || self.expires_at.is_some() && self.refresh_token.is_none()
+            || self.refresh_expires_at.is_some() && self.refresh_token.is_none()
+        {
+            return Err("invalid private GitHub OAuth session".into());
+        }
+        Ok(())
+    }
 }
 impl Session {
     fn validate(&self) -> Result<()> {
@@ -123,6 +170,9 @@ impl Session {
             || !self.token.bytes().all(|b| b.is_ascii_graphic())
         {
             return Err("invalid private GitHub session".into());
+        }
+        if let Some(oauth) = &self.oauth {
+            oauth.validate()?;
         }
         Ok(())
     }
@@ -539,7 +589,14 @@ fn issue_matches(url: &str, owner: &str, repo: &str, number: u64) -> bool {
 
 impl Runtime {
     pub(crate) fn github_operator_reuse(&self) -> Result<Value> {
-        let (client, session) = self.github_client(true)?;
+        let (client, session) = match self.github_client(true) {
+            Err(error)
+                if decode_task_error(&error).is_some_and(|v| v["status"] == "needs_auth") =>
+            {
+                return Ok(json!({"status":"needs_auth"}));
+            }
+            other => other?,
+        };
         let saved = session.ok_or("saved GitHub identity missing")?;
         match client.current_user() {
             Ok(user) => {
@@ -565,13 +622,40 @@ impl Runtime {
         }
         let path = super::auth::saved_session(&self.state, "github", &self.account)?
             .ok_or("selected GitHub account has no saved token; no public fallback was made")?;
-        let session: Session = serde_json::from_slice(&github_private(&path, 8192)?)
+        let mut session: Session = serde_json::from_slice(&github_private(&path, 16384)?)
             .map_err(|_| "invalid private GitHub session")?;
         session.validate()?;
         super::auth::bind_identity(
             path.parent().ok_or("missing GitHub account directory")?,
             &session.id.to_string(),
         )?;
+        if let Some(oauth) = session.oauth.as_ref() {
+            let now = crate::outbox::now()?;
+            if oauth
+                .expires_at
+                .is_some_and(|expiry| expiry <= now.saturating_add(60))
+            {
+                if oauth.refresh_expires_at.is_some_and(|expiry| expiry <= now) {
+                    return Err(self.github_sdk_error(platform_github::Error::LoginRequired));
+                }
+                let client = platform_github::auth::Client::new(&oauth.client_id)
+                    .map_err(|e| self.github_sdk_error(e))?;
+                let tokens = client
+                    .refresh(
+                        oauth
+                            .refresh_token
+                            .as_deref()
+                            .ok_or("missing private GitHub refresh credential")?,
+                    )
+                    .map_err(|e| self.github_sdk_error(e))?;
+                let metadata = OAuthSession::from_tokens(&tokens, &oauth.client_id, now)?;
+                session.token = tokens.access_token;
+                session.oauth = Some(metadata);
+                // Runtime owns the account-state lock. Rotate both credentials
+                // in one private atomic session replacement, never two files.
+                self.save_github_session(&session)?;
+            }
+        }
         Ok(Some(session))
     }
     fn github_client(&self, required: bool) -> Result<(platform_github::Client, Option<Session>)> {
@@ -625,6 +709,7 @@ impl Runtime {
         let session = Session {
             schema: 1,
             token,
+            oauth: None,
             id: user["id"]
                 .as_u64()
                 .filter(|id| *id > 0)
@@ -634,11 +719,52 @@ impl Runtime {
                 .ok_or("GitHub user response lacks a login")?
                 .into(),
         };
+        self.save_github_session(&session)?;
+        Ok(
+            json!({"status":"online","scope":self.scope(Platform::Github),"user":{"id":session.id,"login":session.login},"token_saved":true,"host_credentials_used":false}),
+        )
+    }
+    pub(crate) fn github_oauth_login(
+        &self,
+        tokens: platform_github::auth::Tokens,
+        client_id: &str,
+    ) -> Result<Value> {
+        let metadata = OAuthSession::from_tokens(&tokens, client_id, crate::outbox::now()?)?;
+        let client = platform_github::Client::new(platform_github::Config {
+            token: Some(tokens.access_token.clone()),
+            ..Default::default()
+        })
+        .map_err(|e| e.to_string())?;
+        let user = client
+            .current_user()
+            .map_err(|e| human_task_error(self.github_sdk_error(e)))?;
+        let session = Session {
+            schema: 1,
+            token: tokens.access_token,
+            id: user["id"]
+                .as_u64()
+                .filter(|id| *id > 0)
+                .ok_or("GitHub OAuth identity missing")?,
+            login: user["login"]
+                .as_str()
+                .ok_or("GitHub OAuth login missing")?
+                .into(),
+            oauth: Some(metadata),
+        };
+        self.save_github_session(&session)?;
+        Ok(
+            json!({"status":"online","scope":self.scope(Platform::Github),"user":{"id":session.id,"login":session.login},"token_saved":true,"authorization":"oauth_device","host_credentials_used":false}),
+        )
+    }
+    fn save_github_session(&self, session: &Session) -> Result<()> {
+        if self.account == "public" {
+            return Err("GitHub login needs a personal account alias".into());
+        }
         session.validate()?;
         let directory = account_directory(&self.state, "github", &self.account)?;
         let path = directory.join("session.json");
         if fs::symlink_metadata(&path).is_ok() {
-            let old: Session = serde_json::from_slice(&github_private(&path, 8192)?)
+            let old: Session = serde_json::from_slice(&github_private(&path, 16384)?)
                 .map_err(|_| "invalid existing GitHub session")?;
             old.validate()?;
             if old.id != session.id {
@@ -664,10 +790,7 @@ impl Runtime {
         if result.is_err() {
             let _ = fs::remove_file(&temporary);
         }
-        result?;
-        Ok(
-            json!({"status":"online","scope":self.scope(Platform::Github),"user":{"id":session.id,"login":session.login},"token_saved":true,"host_credentials_used":false}),
-        )
+        result
     }
 
     pub(super) fn call_github_task(&mut self, method: &str, params: &Value) -> Result<Value> {

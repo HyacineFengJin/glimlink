@@ -267,6 +267,7 @@ pub enum LoginMethod {
     Password,
     Device,
     Browser,
+    Token,
 }
 impl std::str::FromStr for LoginMethod {
     type Err = String;
@@ -277,6 +278,7 @@ impl std::str::FromStr for LoginMethod {
             "password" => Ok(Self::Password),
             "device" => Ok(Self::Device),
             "browser" => Ok(Self::Browser),
+            "token" => Ok(Self::Token),
             _ => Err("unsupported login method".into()),
         }
     }

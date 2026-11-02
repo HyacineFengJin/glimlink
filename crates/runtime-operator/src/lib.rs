@@ -114,6 +114,15 @@ impl Options {
         }
         result.platform = positional[0].parse()?;
         result.action = positional[1].parse()?;
+        // Explicit private files keep their original token-import behavior.
+        // Ordinary GitHub login uses the project's browser authorization.
+        if result.platform == Platform::Github
+            && result.secret_file.is_some()
+            && result.method == LoginMethod::Auto
+            && result.action == Action::Login
+        {
+            result.method = LoginMethod::Token;
+        }
         if result
             .ssh
             .as_ref()
@@ -142,7 +151,7 @@ impl Options {
         Ok(Some(result))
     }
 }
-pub const HELP: &str = "agentctl [--ssh user@host] [--runtime PATH] [--state PATH] [--account ALIAS] PLATFORM login [--method auto|qr|password|device|browser]\n\nPlatforms: bilibili (bili), tieba, qq, github, x (twitter), codex, antigravity (agy), weixin (paused)\nManagement: status, capabilities, login, import-login, reuse-login\nLogin reuses the saved identity first. Only an explicit authentication-needed result starts a new supported flow.\nPrivate input: --secret-file FILE (regular private0600) or a hidden /dev/tty prompt; never command arguments or RPC stdin.\nX: saved web-session reuse, or private auth_token/ct0 JSON via --secret-file or a local password-field form.\nQQ: --profile PROFILE; verification continues in the same control session without another password file.\nLocal UI: --ui auto|browser|webview (auto uses optional adjacent WebKitGTK helper for local pages).\nOAuth HTTPS always uses the system browser. Explicit webview never silently falls back.\nHuman UI: --no-open prints the client-local page/authorization URL; --no-ui disables pages and hidden prompts except X cookie input via hidden /dev/tty.\nDeadline: --timeout-secs 1..3600 (default 900); closing the local page or Ctrl-C cancels the active flow.\n\nLocal starts the adjacent agent-runtime. Remote uses system OpenSSH with normal host-key policy.\nNo VPS HTTP port, browser engine, platform protocol or model is embedded in agentctl or the core; optional client WebView uses system libraries.";
+pub const HELP: &str = "agentctl [--ssh user@host] [--runtime PATH] [--state PATH] [--account ALIAS] PLATFORM login [--method auto|qr|password|device|browser|token]\n\nPlatforms: bilibili (bili), tieba, qq, github, x (twitter), codex, antigravity (agy), weixin (paused)\nManagement: status, capabilities, login, import-login, reuse-login\nLogin reuses the saved identity first. Only an explicit authentication-needed result starts a new supported flow.\nPrivate input: --secret-file FILE (regular private0600) or a hidden /dev/tty prompt; never command arguments or RPC stdin.\nX: saved web-session reuse, or private auth_token/ct0 JSON via --secret-file or a local password-field form.\nQQ: --profile PROFILE; verification continues in the same control session without another password file.\nLocal UI: --ui auto|browser|webview (auto uses optional adjacent WebKitGTK helper for local pages).\nOAuth HTTPS always uses the system browser. Explicit webview never silently falls back.\nHuman UI: --no-open prints the client-local page/authorization URL; --no-ui disables pages and hidden prompts except X cookie input via hidden /dev/tty.\nDeadline: --timeout-secs 1..3600 (default 900); closing the local page or Ctrl-C cancels the active flow.\n\nLocal starts the adjacent agent-runtime. Remote uses system OpenSSH with normal host-key policy.\nNo VPS HTTP port, browser engine, platform protocol or model is embedded in agentctl or the core; optional client WebView uses system libraries.";
 
 fn valid_ssh_destination(host: &str) -> bool {
     !host.is_empty()

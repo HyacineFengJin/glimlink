@@ -122,18 +122,24 @@ Cookie input. A rejected saved session does not silently start a fresh login or
 discard the old credentials; the shared Runtime driver owns identity checks and
 the final result.
 
-When the Runtime asks for Cookies, **在系统浏览器打开 X** is the first option.
-It sends the fixed `https://x.com/i/flow/login` URL to the system opener, after
-checking the current X login ID and requested input type. Users return to the
-operator and paste a complete Cookie request header once; separate `auth_token`
-and `ct0` fields remain available. The external browser has no automatic callback
-or Cookie capture. The operator does not open its profile files, request an
-extension, or send credentials through chat. A reused external browser process
-runs on the operator computer and is excluded from the Runtime memory card.
+When the Runtime asks for a web session, the primary action opens the system
+browser at the fixed X login URL. Google/Apple sign-in remains in that normal
+browser. This is web-session import, not official X OAuth: the operator cannot
+silently capture another browser's session. On return, a guided private form
+explains Chrome's Application → Cookies → x.com pane and the two needed Value
+fields. Whole-header paste remains an advanced option with its own Network guide.
+The generic phrase “Cookie request header” is not the initial instruction. Fields
+are disabled while the import section is closed, and closing it clears values.
+
+The optional built-in window is a secondary username/password method, labelled
+with its limits. Google/Apple navigation or a blank authorization popup hands off
+to a complete login at the fixed X URL in the system browser, closes the limited
+window, and reveals the import guide. Remote OAuth URLs and their query data are
+never forwarded to the opener; opening a browser never implies authentication.
 
 The optional built-in X window uses the existing system WebView in a separate
 incognito context. It accepts top-level navigation only to exact HTTPS `x.com`,
-blocks popups/downloads/permissions, and has no management IPC capability.
+denies embedded popups/downloads/permissions, and has no management IPC capability.
 Google and other external sign-ins are not embedded; use the system browser and
 private import for those. After a normal `/` or `/home` landing, a background
 Rust thread reads `cookies_for_url(https://x.com/)`, extracts only the Secure
@@ -233,3 +239,27 @@ no compositor-specific environment override or graphics fallback.
 DOM tests exercise geometry and composition/delivery separately. Native candidate
 placement also requires desktop IME acceptance; dispatching JavaScript composition
 events alone does not validate the input-method popup.
+
+## Project-provided GitHub authorization
+
+The main GitHub action reuses the selected account, then authorizes the project's
+registered **Glimlink** OAuth application with GitHub's device flow. Users need
+no developer registration, client ID, personal token, or Glimlink cloud account.
+GitHub asks them to confirm a short code and the requested public-repository /
+notification permissions in their system browser. The application requests
+`read:user public_repo notifications`; it does not request private-repository
+access by default. Existing tokens retain their permissions.
+
+Only the public application ID is bundled; no client secret is generated or
+shipped. The headless Runtime owns polling and receives tokens directly from
+GitHub, while the operator presents the official verification URL and short code.
+Local and SSH transports use the same driver. Tokens and optional refresh tokens
+are saved together in the selected alias's private, identity-bound session;
+refresh occurs on demand before expiry, without a resident authentication daemon.
+Explicit token import remains an advanced option (`--method token`), and existing
+`--secret-file` terminal usage keeps that behavior. An optional developer-only
+`GLIMLINK_GITHUB_CLIENT_ID` override does not appear in the ordinary login flow.
+
+This registers and connects GitHub, not X OAuth or Gmail. Application registration,
+permission review, and API usage charges are different requirements; no provider's
+user is told to register an application merely because we have not integrated it.

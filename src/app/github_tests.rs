@@ -872,3 +872,70 @@ fn collaboration_unknown_result_is_returned_without_credentials_or_network() {
         Status::Unknown
     );
 }
+
+#[test]
+fn oauth_metadata_rotates_atomically_preserves_alias_and_accepts_legacy_tokens() {
+    let lab = Lab::new();
+    let runtime = Runtime::open(&lab.0, "oauth-account", None).unwrap();
+    let old: Session = serde_json::from_value(
+        json!({"schema":1,"token":"synthetic-old-pat","id":42,"login":"fixture-user"}),
+    )
+    .unwrap();
+    assert!(old.oauth.is_none());
+    runtime.save_github_session(&old).unwrap();
+    let tokens = platform_github::auth::Tokens {
+        access_token: "synthetic-oauth-access".into(),
+        refresh_token: Some("synthetic-oauth-refresh".into()),
+        expires_in: Some(28800),
+        refresh_expires_in: Some(15_552_000),
+        scope: "read:user,public_repo,notifications".into(),
+    };
+    let metadata =
+        OAuthSession::from_tokens(&tokens, platform_github::auth::DEFAULT_CLIENT_ID, 1000).unwrap();
+    assert_eq!(metadata.expires_at, Some(29800));
+    let replacement = Session {
+        schema: 1,
+        token: tokens.access_token,
+        id: 42,
+        login: "fixture-user".into(),
+        oauth: Some(metadata),
+    };
+    runtime.save_github_session(&replacement).unwrap();
+    let directory = account_directory(&lab.0, "github", "oauth-account").unwrap();
+    let path = directory.join("session.json");
+    let before = github_private(&path, 16384).unwrap();
+    let stored: Session = serde_json::from_slice(&before).unwrap();
+    assert_eq!(stored.token, "synthetic-oauth-access");
+    assert_eq!(
+        stored.oauth.unwrap().refresh_token.as_deref(),
+        Some("synthetic-oauth-refresh")
+    );
+    assert_eq!(
+        std::fs::metadata(&path).unwrap().permissions().mode() & 0o077,
+        0
+    );
+    let wrong = Session {
+        id: 99,
+        ..replacement
+    };
+    assert!(runtime.save_github_session(&wrong).is_err());
+    assert_eq!(github_private(&path, 16384).unwrap(), before);
+    assert!(!std::fs::read_dir(directory).unwrap().any(|entry| {
+        entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .ends_with(".tmp")
+    }));
+}
+
+#[test]
+fn malformed_oauth_state_is_not_accepted_as_a_saved_identity() {
+    for extra in [
+        json!({"client_id":"https://evil.invalid","expires_at":1,"refresh_token":"synthetic","refresh_expires_at":2,"scope":"read:user"}),
+        json!({"client_id":platform_github::auth::DEFAULT_CLIENT_ID,"expires_at":1,"refresh_token":null,"refresh_expires_at":null,"scope":"read:user"}),
+    ] {
+        let session:Session=serde_json::from_value(json!({"schema":1,"token":"synthetic-access","id":42,"login":"fixture-user","oauth":extra})).unwrap();
+        assert!(session.validate().is_err());
+    }
+}
