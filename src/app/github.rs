@@ -726,21 +726,28 @@ impl Runtime {
     }
     pub(crate) fn github_oauth_login(
         &self,
-        tokens: platform_github::auth::Tokens,
+        tokens: &platform_github::auth::Tokens,
         client_id: &str,
+        received_at: u64,
     ) -> Result<Value> {
-        let metadata = OAuthSession::from_tokens(&tokens, client_id, crate::outbox::now()?)?;
+        let metadata = OAuthSession::from_tokens(tokens, client_id, received_at)?;
         let client = platform_github::Client::new(platform_github::Config {
             token: Some(tokens.access_token.clone()),
             ..Default::default()
         })
         .map_err(|e| e.to_string())?;
-        let user = client
-            .current_user()
-            .map_err(|e| human_task_error(self.github_sdk_error(e)))?;
+        let user = match client.current_user() {
+            Ok(user) => user,
+            Err(error) => {
+                if let Some(delay) = platform_github::auth::retry_after(&error) {
+                    return Ok(json!({"status":"pending","poll_after_ms":delay*1000}));
+                }
+                return Ok(json!({"status":"failed","oauth_error":error.to_string()}));
+            }
+        };
         let session = Session {
             schema: 1,
-            token: tokens.access_token,
+            token: tokens.access_token.clone(),
             id: user["id"]
                 .as_u64()
                 .filter(|id| *id > 0)

@@ -30,6 +30,18 @@ pub enum Poll {
     Denied,
     Expired,
 }
+/// Retry only idempotent authorization polling / identity reads while a human
+/// login is alive. Ordinary GitHub writes never use this policy.
+pub fn retry_after(error: &Error) -> Option<u64> {
+    match error {
+        Error::Network | Error::HttpStatus(500..=599) => Some(10),
+        Error::RateLimited {
+            retry_after_seconds,
+            ..
+        } => Some(retry_after_seconds.unwrap_or(60).clamp(5, 3600)),
+        _ => None,
+    }
+}
 pub struct Client {
     client_id: String,
     agent: ureq::Agent,
@@ -342,6 +354,17 @@ mod tests {
     }
     #[test]
     fn malformed_tokens_origins_and_expiry_are_rejected() {
+        assert_eq!(retry_after(&Error::Network), Some(10));
+        assert_eq!(retry_after(&Error::HttpStatus(503)), Some(10));
+        assert_eq!(
+            retry_after(&Error::RateLimited {
+                retry_after_seconds: Some(120),
+                reset_at: None
+            }),
+            Some(120)
+        );
+        assert_eq!(retry_after(&Error::LoginRequired), None);
+        assert_eq!(retry_after(&Error::PermissionDenied), None);
         assert!(!valid_client_id("https://evil.invalid"));
         assert!(!valid_client_id("client\nheader"));
         for v in [

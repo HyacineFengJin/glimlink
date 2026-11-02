@@ -120,6 +120,11 @@ enum Stage {
         client: platform_github::auth::Client,
         device: platform_github::auth::DeviceFlow,
     },
+    GithubVerify {
+        tokens: platform_github::auth::Tokens,
+        client_id: String,
+        received_at: u64,
+    },
 }
 struct Flow {
     id: String,
@@ -561,7 +566,23 @@ impl LoginController {
                 )?;
             }
             Stage::GithubDevice { client, device } => {
-                let result = match client.poll(device).map_err(|e| e.to_string())? {
+                let polled = match client.poll(device) {
+                    Ok(value) => value,
+                    Err(error) => {
+                        if let Some(delay) = platform_github::auth::retry_after(&error) {
+                            flow.result.poll_after_ms = Some(delay * 1000);
+                            flow.next_poll = Instant::now() + Duration::from_secs(delay);
+                            emit(
+                                "progress",
+                                json!({"status":"pending","message":"Network interrupted; authorization is still waiting. You do not need to sign in again."}),
+                            )?;
+                            return Ok(());
+                        }
+                        return flow
+                            .update(failed("github_authorization_failed", &error.to_string()));
+                    }
+                };
+                let result = match polled {
                     platform_github::auth::Poll::Pending => {
                         flow.result.poll_after_ms = Some(device.interval * 1000);
                         flow.next_poll = Instant::now() + Duration::from_secs(device.interval);
@@ -575,14 +596,20 @@ impl LoginController {
                         "login_expired",
                         "GitHub authorization expired. Start login again.",
                     ),
-                    platform_github::auth::Poll::Authorized(tokens) => normalize(
-                        &self
-                            .runtime(&flow.account)?
-                            .github_oauth_login(tokens, client.client_id())?,
-                    )?,
+                    platform_github::auth::Poll::Authorized(tokens) => {
+                        let client_id = client.client_id().to_owned();
+                        flow.stage = Stage::GithubVerify {
+                            tokens,
+                            client_id,
+                            received_at: now()?,
+                        };
+                        flow.result.authorization = None;
+                        return self.finish_github(flow, emit);
+                    }
                 };
                 flow.update(result)?;
             }
+            Stage::GithubVerify { .. } => self.finish_github(flow, emit)?,
             Stage::Password => {
                 let runtime = self.runtime(&flow.account)?;
                 let challenge = runtime.operator_challenge()?;
@@ -647,6 +674,41 @@ impl LoginController {
             }
         }
         Ok(())
+    }
+    fn finish_github(
+        &mut self,
+        flow: &mut Flow,
+        emit: &mut impl FnMut(&str, Value) -> Result<()>,
+    ) -> Result<()> {
+        let Stage::GithubVerify {
+            tokens,
+            client_id,
+            received_at,
+        } = &flow.stage
+        else {
+            return Err("invalid GitHub verification stage".into());
+        };
+        let raw =
+            self.runtime(&flow.account)?
+                .github_oauth_login(tokens, client_id, *received_at)?;
+        if raw["status"] == "pending" {
+            let delay = raw["poll_after_ms"]
+                .as_u64()
+                .unwrap_or(10000)
+                .clamp(1000, 3_600_000);
+            flow.result.status = LoginStatus::Pending;
+            flow.result.poll_after_ms = Some(delay);
+            flow.next_poll = Instant::now() + Duration::from_millis(delay);
+            emit(
+                "progress",
+                json!({"status":"pending","message":"GitHub authorization received; waiting to verify the account. Do not authorize again."}),
+            )?;
+            return Ok(());
+        }
+        if raw["status"] == "failed" {
+            return flow.update(failed("github_identity_verification_failed",raw["oauth_error"].as_str().unwrap_or("The authorized account could not be verified or saved. Existing credentials were retained.")));
+        }
+        flow.update(normalize(&raw)?)
     }
     fn retain(&mut self, flow: Flow) -> Result<Value> {
         let value = encode(&flow.result)?;
@@ -925,6 +987,40 @@ mod tests {
         let value = control.execute(&request, &mut |_, _| Ok(())).unwrap();
         assert_eq!(value["error"]["code"], "account_required");
         assert!(control.active.is_none() && control.runtime.is_none());
+    }
+    #[test]
+    fn received_github_credentials_stay_private_and_cancel_without_reauthorizing() {
+        let path = state("github-received-cancel");
+        let mut control = LoginController::new(&path).unwrap();
+        let tokens = platform_github::auth::Tokens {
+            access_token: "synthetic-private-access".into(),
+            refresh_token: Some("synthetic-private-refresh".into()),
+            expires_in: Some(28800),
+            refresh_expires_in: Some(15_552_000),
+            scope: "read:user".into(),
+        };
+        let flow = Flow::new(
+            Platform::Github,
+            "owner",
+            LoginMethod::Device,
+            Stage::GithubVerify {
+                tokens,
+                client_id: platform_github::auth::DEFAULT_CLIENT_ID.into(),
+                received_at: 1,
+            },
+        )
+        .unwrap();
+        let id = flow.id.clone();
+        let serialized = encode(&flow.result).unwrap().to_string();
+        assert!(!serialized.contains("synthetic-private"));
+        assert!(flow.result.authorization.is_none());
+        control.active = Some(flow);
+        let mut cancel = Request::new(2, Platform::Github, "owner".into(), Action::CancelLogin);
+        cancel.params = json!({"login_id":id});
+        let value = control.execute(&cancel, &mut |_, _| Ok(())).unwrap();
+        assert_eq!(value["status"], "cancelled");
+        assert!(!value.to_string().contains("synthetic-private"));
+        assert!(control.runtime.is_none());
     }
     #[test]
     fn explicit_x_refresh_requests_private_input_without_touching_saved_state() {

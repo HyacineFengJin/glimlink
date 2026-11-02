@@ -3,6 +3,8 @@
 // marked translate=no and are never rewritten or persisted by this module.
 (() => {
   const en = {
+    "网络暂时中断，授权仍在等待，不用重复登录。":"Network interrupted; authorization is still waiting. You do not need to sign in again.",
+    "已收到 GitHub 授权，正在等待账号核验，不用重新授权。":"GitHub authorization received; waiting to verify the account. Do not authorize again.",
     "此窗口只支持 X 账号密码；Google / Apple 登录请使用操控端的系统浏览器入口。":"This window supports X username/password only. Use the operator’s system-browser option for Google / Apple.",
     "请在系统浏览器完成 X 登录，可以使用 Google / Apple。然后按操控端的步骤导入账号。":"Sign in to X in your system browser, including Google / Apple. Then follow the operator’s account import steps.",
     "请打开系统浏览器访问 x.com，完成登录后按操控端步骤导入账号。":"Open x.com in your system browser, sign in, and follow the operator’s account import steps.",
