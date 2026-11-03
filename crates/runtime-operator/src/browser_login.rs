@@ -19,11 +19,13 @@ use std::{
 
 const MAX_FRAME: usize = 256 * 1024;
 const POLL: Duration = Duration::from_millis(750);
+mod normal;
+pub use normal::Context as CaptureContext;
 
 /// Keep the owned browser alive while the Runtime verifies the captured session.
 /// Dropping this lease closes only that browser and removes its temporary profile.
 pub struct BrowserLease {
-    _browser: Browser,
+    _browser: Option<Browser>,
 }
 pub struct Handoff {
     secret: Secret,
@@ -502,6 +504,7 @@ impl Drop for Browser {
 /// fixed progress codes; the returned secret belongs to this one human flow.
 pub fn capture(
     platform: Platform,
+    context: CaptureContext,
     deadline: Instant,
     cancel: &AtomicBool,
     mut progress: impl FnMut(&'static str),
@@ -514,6 +517,14 @@ pub fn capture(
     }
     if Instant::now() >= deadline {
         return Err("operator_timeout".into());
+    }
+    if platform == Platform::Pixiv {
+        return normal::capture(platform, context, deadline, cancel, &mut progress).map(|secret| {
+            secret.map(|secret| Handoff {
+                secret,
+                lease: BrowserLease { _browser: None },
+            })
+        });
     }
     progress("opening");
     let mut browser = Browser::installed(platform)?;
@@ -534,7 +545,9 @@ pub fn capture(
             progress("verifying");
             Ok(Some(Handoff {
                 secret,
-                lease: BrowserLease { _browser: browser },
+                lease: BrowserLease {
+                    _browser: Some(browser),
+                },
             }))
         }
         Err(error) if error == "operator_cancelled" || error == "browser_closed" => Ok(None),
@@ -947,7 +960,9 @@ mod tests {
         let pid = browser.child.id();
         let handoff = Handoff {
             secret,
-            lease: BrowserLease { _browser: browser },
+            lease: BrowserLease {
+                _browser: Some(browser),
+            },
         };
         let (secret, lease) = handoff.into_parts();
         assert!(std::path::Path::new(&format!("/proc/{pid}")).exists());

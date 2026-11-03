@@ -832,10 +832,11 @@ impl Human for DesktopUi {
         if required.kind == SecretInputKind::BrowserSession {
             let platform = self.platform;
             let cancel = self.cancel.clone();
-            let handoff=runtime_operator::browser_login::capture(platform, deadline, &cancel, |status| {
+            let handoff=runtime_operator::browser_login::capture(platform, self.native.browser_context(), deadline, &cancel, |status| {
                 let message = match status {
                     "opening" => "正在打开本机浏览器登录窗口…",
                     "waiting" => "请在浏览器里登录。完成后自动交接给 Runtime，无需复制登录信息。",
+                    "normal_browser" => "请在普通浏览器的 Glimlink 交接页，通过扩展连接已登录账号。",
                     _ => "浏览器登录信息已交回，正在由 Runtime 核验账号…",
                 };
                 self.event_data("progress", json!({"status":"verification_required","message":message,"browser_session":true}));

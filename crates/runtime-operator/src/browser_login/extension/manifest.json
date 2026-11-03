@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Glimlink Session Bridge",
+  "version": "0.1.0",
+  "description": "Connect a selected signed-in website account to your local Glimlink operator.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoy/sRE5JZAiyCQDe0ECFuq3zzXdVKmq4O5B+IpAa8GzWA4/PsLWG5n4kye0YutBYflU2ACdG20jZkyGzhm7zNTyzLQH/FXxy1J3OE62lXGyH2/3Bbmru0rRCB73fncHJm7SqTen3yZjdlXGwPQGcogIDHXExjw2tlEo8H6SxPVh2NFcEmCweHMWTJl5PkhKYj3RLpcGZYtE7Eazh0y8aWUgqYRLlo+aq+LH7GYD5j6gv5kp/5D/cX5FFQOSuqe3m0+piNvknE/IkB5F1M75FoJuVKlS53TznG8WF9yKjzsWTJ6aGR/+2UL64S1TF56T/HFw4Y5L77FMbN4vgtFpbkQIDAQAB",
+  "permissions": [
+    "cookies",
+    "scripting"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*"
+  ],
+  "optional_host_permissions": [
+    "https://www.pixiv.net/*",
+    "https://pixiv.net/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "connect.html",
+        "probe.svg"
+      ],
+      "matches": [
+        "http://127.0.0.1/*"
+      ]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src http://127.0.0.1:*"
+  }
+}

@@ -96,6 +96,9 @@ fn authorization_url(url: &str) -> Result<()> {
     Ok(())
 }
 impl ClientUi {
+    pub fn browser_context(&self) -> crate::browser_login::CaptureContext {
+        crate::browser_login::CaptureContext::from_options(&self.options)
+    }
     /// Reusable local QR/CAPTCHA presenter. GUI wrappers should override input
     /// and authorization as needed; constructing this adapter performs no input.
     pub fn new(options: &Options) -> Self {
@@ -287,7 +290,7 @@ impl Human for ClientUi {
             if !self.options.open_browser {
                 return Err("browser_session_requires_browser_or_secret_file".into());
             }
-            let handoff=crate::browser_login::capture(self.options.platform, deadline, &interrupt::CANCELLED, |status| {
+            let handoff=crate::browser_login::capture(self.options.platform, self.browser_context(), deadline, &interrupt::CANCELLED, |status| {
                 eprintln!("Browser login: {status}");
             })?;
             return Ok(handoff.map(|handoff|{let (secret,lease)=handoff.into_parts();self.browser_lease=Some(lease);secret}));

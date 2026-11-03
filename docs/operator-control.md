@@ -43,7 +43,10 @@ capabilities. Existing session import is also explicitly available through
 
 Bilibili, Tieba, X, Pixiv, Reddit and Discord prefer the saved Runtime session. If a new login is
 needed, `browser` asks for `browser_session` on the same private control flow.
-The operator launches an installed Chrome/Chromium/Edge/Brave with a temporary
+Pixiv uses the [ordinary-browser session bridge](browser-session-bridge.md),
+reusing a browser where the human is already signed in. Its extension asks for
+temporary site access before handoff. The remaining browser-session transports
+launch an installed Chrome/Chromium/Edge/Brave with a temporary
 0700 non-default profile and an inherited debugging pipe. No debugging TCP port
 is opened. Google/Apple sign-in stays inside that real browser; only cookies
 needed by the selected destination platform are retained (Discord uses its own user-session token). Neither the full

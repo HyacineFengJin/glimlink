@@ -3,6 +3,7 @@
 // marked translate=no and are never rewritten or persisted by this module.
 (() => {
   const en = {
+    "请在普通浏览器的 Glimlink 交接页，通过扩展连接已登录账号。":"Use the Glimlink handoff page in your normal browser to connect the signed-in account through the extension.",
     "重新连接":"Reconnect",
     "扫码登录 ↗":"Sign in with QR ↗",
     "尚未完成账号核验，请重新连接。":"Account verification is incomplete. Connect again.",
