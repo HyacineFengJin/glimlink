@@ -131,6 +131,7 @@ fn platform(name: &str) -> Result<Platform> {
         "qq" => Ok(Platform::Qq),
         "github" => Ok(Platform::Github),
         "x" => Ok(Platform::X),
+        "pixiv" => Ok(Platform::Pixiv),
         _ => Err("unsupported platform account namespace".into()),
     }
 }
@@ -318,7 +319,7 @@ impl Runtime {
 
     pub(super) fn saved_accounts(&self) -> Result<Value> {
         Ok(
-            json!({"bilibili":aliases(&self.state,"bilibili")?,"tieba":aliases(&self.state,"tieba")?,"qq":aliases(&self.state,"qq")?,"github":aliases(&self.state,"github")?,"x":aliases(&self.state,"x")?}),
+            json!({"bilibili":aliases(&self.state,"bilibili")?,"tieba":aliases(&self.state,"tieba")?,"qq":aliases(&self.state,"qq")?,"github":aliases(&self.state,"github")?,"x":aliases(&self.state,"x")?,"pixiv":aliases(&self.state,"pixiv")?}),
         )
     }
 
@@ -418,6 +419,7 @@ impl Runtime {
                 | Platform::Qq
                 | Platform::Github
                 | Platform::X
+                | Platform::Pixiv
         ) {
             return Err("provider is unavailable or paused".into());
         }

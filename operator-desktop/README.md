@@ -114,28 +114,26 @@ Cookie values and proof data do not enter normal UI events or activity history.
 Closing the application or cancelling a flow signals the shared login driver,
 which cleans up its private control connection and native helper.
 
-### X web login
+### Browser session handoff
 
-The primary X action uses `auto` to verify and reuse the Runtime's saved session.
-An explicit **更新网页登录态** action uses `browser` to request a new private
-Cookie input. A rejected saved session does not silently start a fresh login or
-discard the old credentials; the shared Runtime driver owns identity checks and
-the final result.
+Bilibili, Tieba, X and Pixiv use the saved Runtime account first. A new login
+opens a locally installed Chrome/Chromium/Edge/Brave in an isolated temporary
+profile. Sign in normally, including external Google/Apple pages. Rust reads
+only the selected platform's necessary cookies through an inherited pipe and
+hands them to the same private Runtime control flow. There is no listening
+debug port and no manual copying in the normal path. Existing personal browser
+profiles are never opened or read.
 
-When the Runtime asks for a web session, the primary action opens the system
-browser at the fixed X login URL. Google/Apple sign-in remains in that normal
-browser. This is web-session import, not official X OAuth: the operator cannot
-silently capture another browser's session. On return, a guided private form
-explains Chrome's Application → Cookies → x.com pane and the two needed Value
-fields. Whole-header paste remains an advanced option with its own Network guide.
-The generic phrase “Cookie request header” is not the initial instruction. Fields
-are disabled while the import section is closed, and closing it clears values.
+Runtime verifies the actual account before saving or showing connected. The
+owned browser closes and its temporary profile is removed after handoff,
+cancellation, timeout or failure. No browser is installed on the VPS. Explicit
+QR login remains available for Bilibili/Tieba. A new browser session can still
+be rejected from a different network or device; that is an authentication
+failure, not a completed connection. Pixiv adds read-only recommendations,
+artwork metadata and lazy images to the existing social tools.
 
-The optional built-in window is a secondary username/password method, labelled
-with its limits. Google/Apple navigation or a blank authorization popup hands off
-to a complete login at the fixed X URL in the system browser, closes the limited
-window, and reveals the import guide. Remote OAuth URLs and their query data are
-never forwarded to the opener; opening a browser never implies authentication.
+The following embedded X implementation and manual import guide remain as
+compatibility code; they are not the primary browser-session path.
 
 The optional built-in X window uses the existing system WebView in a separate
 incognito context. It accepts top-level navigation only to exact HTTPS `x.com`,

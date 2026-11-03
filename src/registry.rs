@@ -12,6 +12,13 @@ fn capability(name: &str, state: S, detail: &str) -> Capability {
 pub fn modules() -> Vec<ModuleInfo> {
     vec![
         ModuleInfo {
+            id: "platform-pixiv".into(), kind: "platform".into(),
+            capabilities: vec![
+                capability("web_login", S::Implemented, "Operator-installed browser hands off only the Pixiv web session; independent authenticated HTML identity verification and alias binding before persistence. Live account acceptance pending."),
+                capability("read", S::Implemented, "Read-only safe-mode recommendations and artwork metadata; opaque targets and lazy regular/original image references use shared media reading. Homepage continuation and ugoira decoding are unavailable."),
+            ],
+        },
+        ModuleInfo {
             id: "runtime-mind".into(),
             kind: "core".into(),
             capabilities: vec![

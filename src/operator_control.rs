@@ -75,7 +75,7 @@ pub(crate) fn execute_legacy(
             platform => {
                 let mut value = runtime.call(&format!("{}.status", platform.name()), &json!({}))?;
                 if value["status"] == "saved_session"
-                    && matches!(platform, Platform::Bilibili | Platform::Tieba | Platform::X)
+                    && matches!(platform, Platform::Bilibili | Platform::Tieba | Platform::X | Platform::Pixiv)
                 {
                     if let Ok(details) =
                         runtime.call(&format!("{}.me", platform.name()), &json!({}))
@@ -96,6 +96,7 @@ pub(crate) fn execute_legacy(
             Platform::Qq => runtime.qq_import_login(path()?)?,
             Platform::Github => runtime.github_login(path()?)?,
             Platform::X => runtime.x_import_login(path()?)?,
+            Platform::Pixiv => runtime.pixiv_import_login(path()?)?,
             _ => return Err("unsupported login import".into()),
         },
         Action::PasswordLogin | Action::PasswordResume => {
@@ -142,6 +143,7 @@ pub(crate) fn execute_legacy(
             Platform::Tieba => runtime.call("tieba.me", &json!({}))?,
             Platform::Qq => runtime.qq_login()?,
             Platform::X => runtime.x_operator_reuse()?,
+            Platform::Pixiv => runtime.pixiv_operator_reuse()?,
             _ => return Err("unsupported saved login platform".into()),
         },
         _ => return Err("unsupported compatibility control action".into()),
@@ -157,6 +159,16 @@ pub(crate) fn execute_legacy(
 }
 
 fn public_failure(id: u64, error: &str) -> Frame {
+    if let Some(code) = error.strip_prefix("pixiv-request:") {
+        let (code,message) = match code {
+            "needs_auth" => ("needs_auth","Pixiv did not accept this web session. The previous saved account was retained."),
+            "verification_required" => ("verification_required","Pixiv requires verification from the Runtime connection. Browser sign-in alone did not complete this connection."),
+            "rate_limited" => ("rate_limited","Pixiv limited this request. No new login or automatic retry was started."),
+            "protocol_changed" => ("protocol_changed","The authenticated Pixiv response could not be recognized; no account session was replaced."),
+            _ => ("pixiv_request_failed","The Pixiv account request did not complete. Existing credentials were retained."),
+        };
+        return Frame::failure(id,code,message);
+    }
     if let Some(code) = error.strip_prefix("x-request:") {
         let (code, message) = match code {
             "needs_auth" => (

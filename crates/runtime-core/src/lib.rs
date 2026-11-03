@@ -15,6 +15,7 @@ pub enum Platform {
     Tieba,
     Github,
     X,
+    Pixiv,
     Local,
 }
 

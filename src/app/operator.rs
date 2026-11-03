@@ -110,6 +110,7 @@ impl Runtime {
             }
             "github" => self.github_operator_reuse(),
             "x" => self.x_operator_reuse(),
+            "pixiv" => self.pixiv_operator_reuse(),
             _ => Err("unsupported saved login platform".into()),
         }
     }

@@ -18,7 +18,7 @@ pub fn specs() -> Vec<DynamicToolSpec> {
     let account = json!({"type":"string","description":"Optional saved account alias. A sole saved account is selected automatically. References retain their original account; an override must match."});
     let target = json!({"type":"string","description":"Opaque target_ref returned by social_open, lists or discussion. Do not construct provider IDs."});
     let continuation = json!({"type":"string","description":"Opaque continuation returned by this task. Runtime restores account, pagination and deduplication; pass it unchanged."});
-    let provider = json!({"type":"string","enum":["bilibili","tieba","x"]});
+    let provider = json!({"type":"string","enum":["bilibili","tieba","x","pixiv"]});
     let limit = json!({"type":"integer","minimum":1,"maximum":20});
     let media = json!({"type":"string","description":"Returned media_ref or cached resource ID. Runtime resolves the account, fetches on demand, detects the real format and prepares model input."});
     let quality = json!({"type":"string","enum":["preview","480p","720p","1080p"],"description":"Requested source quality, not output upscaling. Check actual dimensions/request_met; source/account limitations may prevent it."});
@@ -75,7 +75,7 @@ pub fn specs() -> Vec<DynamicToolSpec> {
         ),
         tool(
             "social_open",
-            "Open a Bilibili video, Tieba thread or X profile/post URL, a target_ref, or notification_ref. X uses a separately configured web session and returns post text, author, observed metrics and lazy media. Notifications resolve directly to selected comments/floors and parent context when available; unresolved or deleted content is explicit, never replaced by another reply. Runtime restores account and resolves object relationships. Media remains lazy.",
+            "Open a Bilibili video, Tieba thread, X profile/post, or Pixiv artwork URL, a target_ref, or notification_ref. Pixiv returns metadata and lazy regular/original image refs; use media_read to view selected images. X uses a separately configured web session and returns post text, author, observed metrics and lazy media. Notifications resolve directly to selected comments/floors and parent context when available; unresolved or deleted content is explicit, never replaced by another reply. Runtime restores account and resolves object relationships. Media remains lazy.",
             json!({"reference":{"type":"string"},"platform":provider,"account":account}),
             &["reference"],
         ),
@@ -111,8 +111,8 @@ pub fn specs() -> Vec<DynamicToolSpec> {
         ),
         tool(
             "social_discover",
-            "Discover Bilibili videos: source=recommended reads the saved account's homepage recommendations; source=popular (the compatibility default) reads the separate public popular list. Returns usable target/cover references and feed provenance. Recommendation refreshes are not stable pages; Runtime deduplicates continuation results. No automatic fallback or login. Media stays lazy.",
-            json!({"source":{"type":"string","enum":["recommended","popular"]},"continuation":continuation,"limit":limit,"account":account}),
+            "Discover Bilibili videos (default platform): source=recommended reads the saved account's homepage; source=popular (compatibility default) reads public popular videos. platform=pixiv returns a safe-mode artwork recommendation snapshot with target_ref and lazy preview_media_ref; its pagination is unavailable. Bilibili recommendation refreshes are not stable pages; Runtime deduplicates continuation results. No automatic fallback or login. Media stays lazy.",
+            json!({"platform":{"type":"string","enum":["bilibili","pixiv"]},"source":{"type":"string","enum":["recommended","popular"]},"continuation":continuation,"limit":limit,"account":account}),
             &[],
         ),
         tool(

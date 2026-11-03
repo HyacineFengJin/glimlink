@@ -27,6 +27,7 @@ mod media_read;
 mod media_view;
 mod speech;
 mod x;
+mod pixiv;
 pub use speech::model_directory as speech_model_directory;
 mod notification_open;
 mod notifications;
@@ -285,6 +286,7 @@ impl Runtime {
             Platform::Qq,
             Platform::Github,
             Platform::X,
+            Platform::Pixiv,
             Platform::Weixin,
         ] {
             let scope = self.scope(platform);
@@ -521,6 +523,9 @@ impl Runtime {
         }
         if method.starts_with("x.") {
             return self.call_x(method, params);
+        }
+        if method.starts_with("pixiv.") {
+            return self.call_pixiv(method, params);
         }
         if method.starts_with("social.")
             || matches!(method, "media.read" | "media.watch" | "runtime.expand")

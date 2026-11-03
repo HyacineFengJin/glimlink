@@ -29,7 +29,7 @@ const RECENT_TASK_REFS: usize = 256;
 const CLOCK_SKEW: u64 = 300;
 
 pub(crate) fn account_path(state: &Path, platform: &str, account: &str) -> Result<PathBuf> {
-    if !matches!(platform, "bilibili" | "weixin" | "tieba" | "qq" | "github" | "x") {
+    if !matches!(platform, "bilibili" | "weixin" | "tieba" | "qq" | "github" | "x" | "pixiv") {
         return Err("unsupported private account namespace".into());
     }
     let scope = Scope {

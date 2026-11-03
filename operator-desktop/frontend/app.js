@@ -12,7 +12,8 @@ const platforms = [
   { id: 'bilibili', name: 'Bilibili', kind: 'social', label: '视频与社区', tone: 'rose', description: '视频、动态与评论' },
   { id: 'qq', name: 'QQ', kind: 'social', label: '聊天', tone: 'blue', description: '消息、群聊与附件' },
   { id: 'tieba', name: '贴吧', kind: 'social', label: '社区', tone: 'indigo', description: '帖子与楼中楼讨论' },
-  { id: 'x', name: 'X', kind: 'social', label: '网页会话', tone: 'carbon', description: '在浏览器登录，再导入账号' },
+  { id: 'x', name: 'X', kind: 'social', label: '网页会话', tone: 'carbon', description: '浏览器登录，自动连接账号' },
+  { id: 'pixiv', name: 'pixiv', kind: 'social', label: '插画与漫画', tone: 'blue', description: '作品、推荐与按需读图' },
   { id: 'github', name: 'GitHub', kind: 'application', label: '开发协作', tone: 'stone', description: '仓库、Issue 与 PR' },
   { id: 'codex', name: 'Codex', kind: 'agent', label: '订阅登录', tone: 'sage', description: '原生 Codex 订阅 · 共享人格与记忆' },
   { id: 'antigravity', name: 'Antigravity', kind: 'agent', label: '订阅登录', tone: 'iris', description: 'Google 订阅授权 · 共享人格与记忆' },
@@ -258,7 +259,12 @@ function render() {
     if (platform.id === 'github') {
       const manual=element('button','x-refresh-login','使用已有 Token');manual.type='button';manual.disabled=!bridge || Boolean(active) || refreshing || connectionDirty;manual.addEventListener('click',()=>beginLogin('github','token'));card.append(manual);
     }
-    if (platform.id === 'x') {
+    if (['bilibili', 'tieba'].includes(platform.id)) {
+      const qr = element('button', 'x-refresh-login', '改用扫码登录');
+      qr.type='button';qr.disabled=!bridge || Boolean(active) || refreshing || connectionDirty;
+      qr.addEventListener('click',()=>beginLogin(platform.id,'qr'));card.append(qr);
+    }
+    if (['x', 'bilibili', 'tieba', 'pixiv'].includes(platform.id)) {
       const update = element('button', 'x-refresh-login', '重新登录');
       update.type = 'button';
       update.disabled = !bridge || paused || refreshing || connectionDirty || Boolean(active);

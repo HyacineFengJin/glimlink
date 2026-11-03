@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 //! A small human client. No platform protocol, model engine or media dependency.
 pub mod console;
+pub mod browser_login;
 pub mod interrupt;
 pub mod login;
 pub mod presentation;

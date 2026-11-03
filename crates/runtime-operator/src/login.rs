@@ -281,6 +281,14 @@ impl Human for ClientUi {
         if let Some(bytes) = bytes {
             return normalize_input(required.kind, bytes).map(Some);
         }
+        if required.kind == SecretInputKind::BrowserSession {
+            if !self.options.open_browser {
+                return Err("browser_session_requires_browser_or_secret_file".into());
+            }
+            return crate::browser_login::capture(self.options.platform, deadline, &interrupt::CANCELLED, |status| {
+                eprintln!("Browser login: {status}");
+            });
+        }
         if required.kind == SecretInputKind::Cookies {
             return self.cookies(deadline);
         }
@@ -323,6 +331,7 @@ impl Human for ClientUi {
                 Err("session import requires a private --secret-file".into())
             }
             SecretInputKind::Cookies => unreachable!("cookie input handled before page policy"),
+            SecretInputKind::BrowserSession => unreachable!("browser input handled before page policy"),
         }
     }
     fn status(&self) -> UiStatus {
@@ -340,6 +349,9 @@ impl Human for ClientUi {
     }
 }
 fn normalize_input(kind: SecretInputKind, bytes: Vec<u8>) -> Result<Secret> {
+    if kind == SecretInputKind::BrowserSession {
+        return Secret::new(bytes);
+    }
     if kind == SecretInputKind::Cookies {
         return human_ui::cookie_secret(bytes);
     }

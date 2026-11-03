@@ -52,6 +52,7 @@ dependencies = [
  "libc",
  "platform-bilibili",
  "platform-github",
+ "platform-pixiv",
  "platform-qq",
  "platform-tieba",
  "platform-weixin",
@@ -1511,6 +1512,16 @@ name = "platform-github"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "serde",
+ "serde_json",
+ "ureq",
+]
+
+[[package]]
+name = "platform-pixiv"
+version = "0.1.0"
+dependencies = [
+ "html5gum",
  "serde",
  "serde_json",
  "ureq",

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "date": "2026-11-01",
+  "date": "2026-11-03",
   "original_code_policy": "MIT",
   "root_license": "LICENSE",
   "notice": "NOTICE",
@@ -265,7 +265,8 @@
         "scripts/**",
         "docs/**",
         "crates/runtime-control/src/**",
-        "crates/runtime-operator/src/**"
+        "crates/runtime-operator/src/**",
+        "crates/platform-pixiv/src/**"
       ],
       "classification": "original",
       "license": "MIT",

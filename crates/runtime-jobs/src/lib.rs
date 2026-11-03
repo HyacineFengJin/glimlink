@@ -134,6 +134,7 @@ impl ExecutionProfile {
                 "qq" => runtime_core::Platform::Qq,
                 "github" => runtime_core::Platform::Github,
                 "x" => runtime_core::Platform::X,
+                "pixiv" => runtime_core::Platform::Pixiv,
                 _ => return Err("unsupported profile default account platform".into()),
             };
             runtime_core::Scope {

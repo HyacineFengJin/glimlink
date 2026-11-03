@@ -68,6 +68,7 @@ pub enum Platform {
     Github,
     #[serde(alias = "twitter")]
     X,
+    Pixiv,
     Codex,
     Antigravity,
     Weixin,
@@ -81,6 +82,7 @@ impl Platform {
             Self::Qq => "qq",
             Self::Github => "github",
             Self::X => "x",
+            Self::Pixiv => "pixiv",
             Self::Codex => "codex",
             Self::Antigravity => "antigravity",
             Self::Weixin => "weixin",
@@ -97,6 +99,7 @@ impl std::str::FromStr for Platform {
             "qq" => Ok(Self::Qq),
             "github" => Ok(Self::Github),
             "x" | "twitter" => Ok(Self::X),
+            "pixiv" => Ok(Self::Pixiv),
             "codex" => Ok(Self::Codex),
             "antigravity" | "agy" => Ok(Self::Antigravity),
             "weixin" | "wechat" => Ok(Self::Weixin),
@@ -225,6 +228,7 @@ impl Request {
                     | Platform::Qq
                     | Platform::Github
                     | Platform::X
+                    | Platform::Pixiv
             ),
             Action::PasswordLogin | Action::PasswordResume | Action::Challenge => {
                 self.platform == Platform::Qq
@@ -331,6 +335,9 @@ pub enum SecretInputKind {
     Session,
     /// A web session supplied privately by the operator, never a platform password.
     Cookies,
+    /// An installed browser on the operator captures this platform's session.
+    /// It travels only on the private control connection, never UI/AI events.
+    BrowserSession,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct InputRequired {

@@ -445,7 +445,9 @@ fn start_login(
         ui.close();
         let result = match outcome {
             Ok(result) => safe_result(result),
-            Err(_) => json!({"status":"failed","error":{"code":"control_unavailable","message":"操控连接或验证界面不可用。SSH 首版需已配置密钥/agent 与主机指纹；未自动切换登录方式。"}}),
+            Err(code) if code == "browser_not_found" => json!({"status":"failed","error":{"code":"browser_not_found","message":"未找到支持自动交接的本机浏览器。请安装 Chrome、Chromium、Edge 或 Brave；已有私密文件仍可使用 agentctl 导入。"}}),
+            Err(code) if code.starts_with("browser_") => json!({"status":"failed","error":{"code":"browser_login_unavailable","message":"浏览器登录连接未完成，请重新打开登录。已有 Runtime 登录态已保留。"}}),
+            Err(_) => json!({"status":"failed","error":{"code":"control_unavailable","message":"操控连接或验证界面不可用，请检查 SSH、Runtime 状态或登录结果。"}}),
         };
         ui.event_data("finished", result);
     }).map_err(|_| ApiError::new("client_state", "无法启动登录任务。"))?;
@@ -636,6 +638,9 @@ fn secret_input(kind: SecretInputKind, value: String) -> ApiResult<Secret> {
                 )
             });
         }
+        SecretInputKind::BrowserSession => {
+            return Err(ApiError::new("browser_input_only", "网页登录态由本机浏览器直接交接，不接受界面脚本输入。"));
+        }
         SecretInputKind::Session => {
             runtime_operator::private_input(Path::new(&value)).map_err(|_| {
                 ApiError::new(
@@ -823,9 +828,20 @@ impl Human for DesktopUi {
                 .map(Some)
                 .map_err(|_| "invalid private GUI input".into());
         }
+        if required.kind == SecretInputKind::BrowserSession {
+            let platform = self.platform;
+            let cancel = self.cancel.clone();
+            return runtime_operator::browser_login::capture(platform, deadline, &cancel, |status| {
+                let message = match status {
+                    "opening" => "正在打开本机浏览器登录窗口…",
+                    "waiting" => "请在浏览器里登录。完成后自动交接给 Runtime，无需复制登录信息。",
+                    _ => "浏览器登录信息已交回，正在由 Runtime 核验账号…",
+                };
+                self.event_data("progress", json!({"status":"verification_required","message":message,"browser_session":true}));
+            });
+        }
         if self.platform == Platform::Github && required.kind == SecretInputKind::Token {
-            // GitHub has no bundled OAuth application. Open its own token page;
-            // the token still returns through the existing private input channel.
+            // Explicit token import remains optional alongside project OAuth.
             open_browser("https://github.com/settings/tokens")
                 .map_err(|_| "system browser unavailable")?;
         }

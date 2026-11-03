@@ -366,7 +366,7 @@ impl LoginController {
         // expiry. The adapter only returns needs_auth for explicit expiry.
         // A person may explicitly refresh the same alias's X web session.
         // Auto never turns a denied/rate-limited request into a fresh login.
-        let explicit_refresh = request.platform == Platform::X && requested == LoginMethod::Browser
+        let explicit_refresh = matches!(request.platform, Platform::X | Platform::Bilibili | Platform::Tieba | Platform::Pixiv) && requested == LoginMethod::Browser
             || request.platform == Platform::Github
                 && matches!(requested, LoginMethod::Device | LoginMethod::Token);
         if !explicit_refresh {
@@ -415,7 +415,10 @@ impl LoginController {
             flow.update(result)?;
             return self.retain(flow);
         }
-        let input_kind = if request.platform == Platform::Github {
+        let input_kind = if matches!(request.platform, Platform::X | Platform::Bilibili | Platform::Tieba | Platform::Pixiv) && method == LoginMethod::Browser {
+            if request.account == "public" { return encode(failed("account_required", "Choose a personal account alias before browser sign-in.")); }
+            Some(SecretInputKind::BrowserSession)
+        } else if request.platform == Platform::Github {
             Some(SecretInputKind::Token)
         } else if request.platform == Platform::X {
             Some(SecretInputKind::Cookies)
@@ -475,6 +478,15 @@ impl LoginController {
         } else if flow.platform == Platform::X {
             let input = PrivateInput::create(runtime.state_dir(), bytes)?;
             runtime.x_import_login(&input.path)?
+        } else if flow.platform == Platform::Bilibili {
+            let input = PrivateInput::create(runtime.state_dir(), bytes)?;
+            runtime.bilibili_import_login(&input.path)?
+        } else if flow.platform == Platform::Tieba {
+            let input = PrivateInput::create(runtime.state_dir(), bytes)?;
+            runtime.tieba_import_login(&input.path)?
+        } else if flow.platform == Platform::Pixiv {
+            let input = PrivateInput::create(runtime.state_dir(), bytes)?;
+            runtime.pixiv_import_login(&input.path)?
         } else {
             let bytes = password_input(bytes, flow.profile.as_deref())?;
             let input = PrivateInput::create(runtime.state_dir(), &bytes)?;
@@ -547,6 +559,7 @@ impl LoginController {
                     (flow.platform, *kind),
                     (Platform::Github, SecretInputKind::Token)
                         | (Platform::X, SecretInputKind::Cookies)
+                        | (Platform::X | Platform::Bilibili | Platform::Tieba | Platform::Pixiv, SecretInputKind::BrowserSession)
                         | (Platform::Qq, SecretInputKind::Password)
                 ) {
                     return Err("private input does not match the active platform login".into());
@@ -814,10 +827,11 @@ impl Drop for LoginController {
 
 fn capabilities(platform: Platform) -> LoginCapabilities {
     let (methods, reuse, import_login, preferred_method, paused, message) = match platform {
-        Platform::Bilibili | Platform::Tieba => (vec![LoginMethod::Qr], true, true, Some(LoginMethod::Qr), false, None),
+        Platform::Bilibili | Platform::Tieba => (vec![LoginMethod::Browser, LoginMethod::Qr], true, true, Some(LoginMethod::Browser), false, Some("Reuse saved sessions first. A real browser on the operator can hand off this platform's session over the private control connection; Runtime verifies identity before saving. QR remains available explicitly.".into())),
         Platform::Qq => (vec![LoginMethod::Password, LoginMethod::Qr], true, true, Some(LoginMethod::Password), false, None),
         Platform::Github => (vec![LoginMethod::Device, LoginMethod::Token], true, true, Some(LoginMethod::Device), false, Some("Authorize the project-provided Glimlink application in your system browser. Existing accounts are reused; private token import remains optional.".into())),
-        Platform::X => (vec![LoginMethod::Auto, LoginMethod::Browser], true, true, Some(LoginMethod::Auto), false, Some("Reuse the saved X web session first. Explicit browser mode refreshes it through private operator input; only auth_token and ct0 are needed. No developer API key or automatic new-device login.".into())),
+        Platform::X => (vec![LoginMethod::Auto, LoginMethod::Browser], true, true, Some(LoginMethod::Browser), false, Some("Reuse the saved X web session first. Otherwise, sign in using an installed browser on the operator. Only the platform session crosses the private control channel; Runtime independently verifies it before saving.".into())),
+        Platform::Pixiv => (vec![LoginMethod::Browser], true, true, Some(LoginMethod::Browser), false, Some("Sign in through a real browser on the operator. Runtime verifies the authenticated Pixiv user before saving the web session. Read-only website adapter; no mobile OAuth app impersonation.".into())),
         Platform::Codex => (vec![LoginMethod::Device], true, false, Some(LoginMethod::Device), false, Some("Native subscription login; one dedicated credential home per engine in this Runtime.".into())),
         Platform::Antigravity => (vec![LoginMethod::Browser], true, false, Some(LoginMethod::Browser), false, Some("Native Google subscription login; the browser and one-time code input run on the operator client.".into())),
         Platform::Weixin => (vec![], false, false, None, true, Some("Personal WeChat login/account testing is paused.".into())),
@@ -1035,7 +1049,7 @@ mod tests {
         let first = control.execute(&start, &mut |_, _| Ok(())).unwrap();
         assert_eq!(first["status"], "verification_required");
         assert_eq!(first["method"], "browser");
-        assert_eq!(first["input_required"]["kind"], "cookies");
+        assert_eq!(first["input_required"]["kind"], "browser_session");
         assert!(control.runtime.is_none());
         start.action = Action::CancelLogin;
         start.params = json!({"login_id":first["login_id"]});

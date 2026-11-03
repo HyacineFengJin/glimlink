@@ -409,6 +409,9 @@ impl Runtime {
         if self.x_task_matches(method, params) {
             return self.call_x_social(method, params);
         }
+        if self.pixiv_task_matches(method, params) {
+            return self.call_pixiv_social(method, params);
+        }
         if method == "social.favorites" && provider(params)? == "bilibili" {
             let mut request = json!({"action":"favorites"});
             if let Some(account) = params.get("account") {
@@ -1117,6 +1120,7 @@ impl Runtime {
             "tieba-media",
             "task-qq-media",
             "task-x-media",
+            "task-pixiv-media",
         ] {
             if let Ok(scope) = self.locators.scope_for(kind, id) {
                 return Ok(scope);

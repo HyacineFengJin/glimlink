@@ -3,6 +3,15 @@
 // marked translate=no and are never rewritten or persisted by this module.
 (() => {
   const en = {
+    "浏览器登录，自动连接账号":"Sign in in your browser to connect automatically",
+    "插画与漫画":"Illustrations and manga",
+    "作品、推荐与按需读图":"Artworks, recommendations and images on demand",
+    "改用扫码登录":"Use QR sign-in instead",
+    "正在打开本机浏览器登录窗口…":"Opening a local browser sign-in window…",
+    "请在浏览器里登录。完成后自动交接给 Runtime，无需复制登录信息。":"Sign in in the browser. The session is handed to Runtime automatically; no copying is needed.",
+    "浏览器登录信息已交回，正在由 Runtime 核验账号…":"Browser session received. Runtime is verifying the account…",
+    "未找到支持自动交接的本机浏览器。请安装 Chrome、Chromium、Edge 或 Brave；已有私密文件仍可使用 agentctl 导入。":"No supported local browser was found. Install Chrome, Chromium, Edge or Brave. Existing private session files can still be imported with agentctl.",
+    "浏览器登录连接未完成，请重新打开登录。已有 Runtime 登录态已保留。":"Browser sign-in did not complete. Start sign-in again. Your saved Runtime session has been kept.",
     "网络暂时中断，授权仍在等待，不用重复登录。":"Network interrupted; authorization is still waiting. You do not need to sign in again.",
     "已收到 GitHub 授权，正在等待账号核验，不用重新授权。":"GitHub authorization received; waiting to verify the account. Do not authorize again.",
     "此窗口只支持 X 账号密码；Google / Apple 登录请使用操控端的系统浏览器入口。":"This window supports X username/password only. Use the operator’s system-browser option for Google / Apple.",
