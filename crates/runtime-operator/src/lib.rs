@@ -2,6 +2,7 @@
 //! A small human client. No platform protocol, model engine or media dependency.
 pub mod console;
 pub mod browser_login;
+mod browser_proxy;
 pub mod interrupt;
 pub mod login;
 pub mod presentation;

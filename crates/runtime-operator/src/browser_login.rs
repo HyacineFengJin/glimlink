@@ -461,6 +461,7 @@ impl Browser {
         .ok_or("browser_not_found")?;
         let profile = Profile::create()?;
         let mut command = Command::new(executable);
+        command.args(crate::browser_proxy::arguments());
         command
             .arg(format!("--user-data-dir={}", profile.0.display()))
             .args([

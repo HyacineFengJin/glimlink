@@ -59,6 +59,12 @@ not on the VPS. Bilibili/Tieba retain explicit `--method qr`; private session
 files remain available via `--secret-file` or `import-login`. Native QQ and
 personal WeChat login are unchanged.
 
+On Linux desktops without Chromium's native GNOME/KDE proxy integration, the
+operator also follows an existing manual GSettings proxy, including protocol
+selection and bypass destinations. Explicit proxy environment variables retain
+precedence. Detection is bounded and never edits global settings, reads proxy
+passwords or changes VPS routing. See Chromium's [Linux proxy configuration](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/docs/linux/proxy_config.md).
+
 Source input files stay on the operator's computer. A `--secret-file` must be a
 regular private file (`0600`), not a symlink, and at most 256 KiB. A platform may
 impose a smaller limit. The client sends its contents through the private pipe,
