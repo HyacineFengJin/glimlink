@@ -14,7 +14,13 @@ async function rpc(path,options={}){
   return response.json();
 }
 function authenticatedPixiv(){
-  try{const node=document.querySelector('meta[name="global-data"]');const user=node?JSON.parse(node.content).userData:null;return Boolean(user&&/^[1-9][0-9]{0,19}$/.test(String(user.id))&&typeof user.name==='string'&&user.name.length)}catch{return false}
+  try{
+    const node=document.querySelector('meta[name="global-data"]');
+    if(node){const user=JSON.parse(node.content).userData;return Boolean(user&&/^[1-9][0-9]{0,19}$/.test(String(user.id))&&typeof user.name==='string'&&user.name.length)}
+    const next=document.getElementById('__NEXT_DATA__');
+    const props=next?JSON.parse(next.textContent)?.props?.pageProps:null;
+    return Boolean(props?.isLoggedIn===true&&/^[1-9][0-9]{0,19}$/.test(String(props.gaUserData?.userId)));
+  }catch{return false}
 }
 async function readSelectedSession(){
   const tabs=await chrome.tabs.query({url:profile.roots.map(root=>root+'*')});

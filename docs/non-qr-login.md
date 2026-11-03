@@ -30,7 +30,7 @@ agent-runtime --account tieba-main tieba import-login /private/tieba-bduss.txt
 | 贴吧 | 本 Runtime 的 `session.json`，一行 Cookie header，或裸正式 `BDUSS` | 复用已有固定域名的用户身份与必要子站握手；不发起二维码或临时票据交换。可保留 `STOKEN` 等必要账号 Cookie。 |
 | Reddit | 操控端浏览器自动交接的当前站点会话 | 独立读取本人资料后保存；推荐首页、帖子、有限评论与按需图片只读，真实账号验收待完成。 |
 | Discord | 操控端浏览器自动交接的个人网页会话 | 独立核验本人身份后保存；私聊/服务器/频道选择、消息历史和附件只读，真实账号验收待完成。 |
-| pixiv | 操控端浏览器自动交接的 `PHPSESSID`，或私有 Cookie header 文件 | 从已登录网页的 `userData` 独立核验账号，不从 Cookie 前缀猜身份；当前提供只读推荐、作品信息与按需读图。 |
+| pixiv | 操控端浏览器自动交接的 `PHPSESSID`，或私有 Cookie header 文件 | 从已登录网页的旧版 `userData` 或新版 Next.js 登录标记与当前用户 ID 独立核验账号，不从 Cookie 前缀猜身份；当前提供只读推荐、作品信息与按需读图。 |
 
 导入完成后，账号按同一别名进入普通工具的自动选择和不透明引用归属流程。服务端拒绝、验证码/风险验证、身份不匹配均会返回明确失败，不自动改走二维码。只有身份核实成功且与别名绑定一致才原子替换保存的登录态；失败不会删除原会话或重定向别名到另一个人。
 

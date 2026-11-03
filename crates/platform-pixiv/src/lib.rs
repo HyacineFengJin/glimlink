@@ -163,7 +163,19 @@ impl Client {
     /// from a PHPSESSID prefix or an arbitrary public profile lookup.
     pub fn me(&self) -> Result<User> {
         let bytes = self.bytes("/", "text/html")?;
-        identity_html(std::str::from_utf8(&bytes).map_err(|_| Error::ProtocolChanged)?)
+        let html = std::str::from_utf8(&bytes).map_err(|_| Error::ProtocolChanged)?;
+        if let Some(actor) = identity_next_id(html)? {
+            match identity_html(html) {
+                Ok(legacy) if legacy.id != actor => return Err(Error::ProtocolChanged),
+                Err(Error::LoginRequired) => return Err(Error::LoginRequired),
+                _ => {}
+            }
+            // SSR identifies the session's own actor. The public profile is
+            // used only for its display name, never as authentication proof.
+            let profile = self.ajax(&format!("/ajax/user/{actor}?full=0&lang=en"))?;
+            return identity_profile(&actor, &profile);
+        }
+        identity_html(html)
     }
     fn ajax(&self, path: &str) -> Result<Value> {
         let bytes = self.bytes(path, "application/json")?;
@@ -250,6 +262,90 @@ fn status(status: u16) -> Result<()> {
         _ => Err(Error::Network),
     }
 }
+fn identity_profile(actor: &str, profile: &Value) -> Result<User> {
+    let returned = profile["userId"]
+        .as_str()
+        .map(str::to_owned)
+        .or_else(|| profile["userId"].as_u64().map(|id| id.to_string()))
+        .ok_or(Error::ProtocolChanged)?;
+    if actor != returned {
+        return Err(Error::ProtocolChanged);
+    }
+    let user = User {
+        id: actor.into(),
+        name: profile["name"]
+            .as_str()
+            .ok_or(Error::ProtocolChanged)?
+            .into(),
+    };
+    user.validate()?;
+    Ok(user)
+}
+fn identity_next_id(input: &str) -> Result<Option<String>> {
+    if input.len() > 2 * 1024 * 1024 {
+        return Err(Error::Limit);
+    }
+    let mut emitter = DefaultEmitter::default();
+    emitter.naively_switch_states(true);
+    let mut capture = false;
+    let mut seen = false;
+    let mut bytes = Vec::new();
+    let mut actor = None;
+    for (index, token) in Tokenizer::new_with_emitter(input, emitter).enumerate() {
+        if index >= 65536 {
+            return Err(Error::Limit);
+        }
+        match token.map_err(|_| Error::ProtocolChanged)? {
+            Token::StartTag(tag) if tag.name.as_ref() == b"script" => {
+                let attr = |key: &[u8]| {
+                    tag.attributes
+                        .iter()
+                        .find(|(k, _)| k.as_ref() == key)
+                        .map(|(_, v)| v.value.as_ref())
+                };
+                if attr(b"id") == Some(b"__NEXT_DATA__".as_slice()) {
+                    if seen || attr(b"type") != Some(b"application/json".as_slice()) {
+                        return Err(Error::ProtocolChanged);
+                    }
+                    seen = true;
+                    capture = true;
+                }
+            }
+            Token::String(value) if capture => {
+                if bytes.len() + value.len() > 1024 * 1024 {
+                    return Err(Error::Limit);
+                }
+                bytes.extend_from_slice(value.as_ref());
+            }
+            Token::EndTag(tag) if capture && tag.name.as_ref() == b"script" => {
+                capture = false;
+                let value: Value =
+                    serde_json::from_slice(&bytes).map_err(|_| Error::ProtocolChanged)?;
+                let props = value
+                    .pointer("/props/pageProps")
+                    .ok_or(Error::ProtocolChanged)?;
+                match props["isLoggedIn"].as_bool() {
+                    Some(false) => return Err(Error::LoginRequired),
+                    Some(true) => {}
+                    _ => return Err(Error::ProtocolChanged),
+                }
+                let value = &props["gaUserData"]["userId"];
+                let own = value
+                    .as_str()
+                    .map(str::to_owned)
+                    .or_else(|| value.as_u64().map(|v| v.to_string()))
+                    .ok_or(Error::ProtocolChanged)?;
+                id(&own)?;
+                actor = Some(own);
+            }
+            _ => {}
+        }
+    }
+    if capture {
+        return Err(Error::ProtocolChanged);
+    }
+    Ok(actor)
+}
 fn identity_html(input: &str) -> Result<User> {
     if input.len() > 2 * 1024 * 1024 {
         return Err(Error::Limit);
@@ -315,6 +411,35 @@ pub fn artwork_view(raw: &Value) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn modern_identity_requires_logged_in_own_actor_not_a_public_creator() {
+        let html = r#"<script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"isLoggedIn":true,"gaUserData":{"userId":"42","token":"synthetic-private"},"artist":{"userId":"99"}}}}</script>"#;
+        let actor = identity_next_id(html).unwrap().unwrap();
+        assert_eq!(actor, "42");
+        let user = identity_profile(
+            &actor,
+            &json!({"userId":"42","name":"Synthetic","extra":"not projected"}),
+        )
+        .unwrap();
+        assert_eq!(user.id, "42");
+        assert!(!serde_json::to_string(&user).unwrap().contains("extra"));
+        assert!(identity_profile(&actor, &json!({"userId":"99","name":"another"})).is_err());
+        assert_eq!(
+            identity_next_id(&html.replace("\"isLoggedIn\":true", "\"isLoggedIn\":false"))
+                .unwrap_err(),
+            Error::LoginRequired
+        );
+        assert!(
+            identity_next_id(&html.replace("\"userId\":\"42\"", "\"userId\":\"42/path\"")).is_err()
+        );
+        assert!(identity_next_id(&format!("{html}{html}")).is_err());
+        assert!(identity_next_id(&html.replace("</script>", "")).is_err());
+        assert!(
+            identity_next_id("<script>var publicAuthor={userId:99}</script>")
+                .unwrap()
+                .is_none()
+        );
+    }
     #[test]
     fn identity_comes_from_authenticated_user_data_not_cookie_or_creator() {
         let html = r#"<meta id="meta-global-data" name="global-data" content="{&quot;token&quot;:&quot;private-csrf&quot;,&quot;userData&quot;:{&quot;id&quot;:&quot;42&quot;,&quot;name&quot;:&quot;猫 &amp; 花&quot;}}"><meta name="preload-data" content='{"illust":{"1":{"userId":"99"}}}'>"#;

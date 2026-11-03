@@ -2,9 +2,9 @@
 // Synthetic browser APIs only. No browser profile, account or network is used.
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
 const source=fs.readFileSync(require('node:path').join(__dirname,'../src/browser_login/extension/connect.js'),'utf8');
-async function scenario({ready=true,grant=true,hash='12345/'+'a'.repeat(48),platform='pixiv',duplicate=false}={}){
+async function scenario({ready=true,grant=true,hash='12345/'+'a'.repeat(48),platform='pixiv',duplicate=false,next=false}={}){
  const events=[],nodes=Object.fromEntries(['connect','status','heading','target','scope'].map(id=>[id,{disabled:true,textContent:'',addEventListener:(_,f)=>nodes[id].click=f}]));
- const doc={getElementById:id=>nodes[id],querySelector:()=>({content:JSON.stringify({userData:ready?{id:'42',name:'synthetic'}:null})})};
+ const doc={getElementById:id=>id==='__NEXT_DATA__'?{textContent:JSON.stringify({props:{pageProps:{isLoggedIn:ready,gaUserData:{userId:'42'}}}})}:nodes[id],querySelector:()=>next?null:({content:JSON.stringify({userData:ready?{id:'42',name:'synthetic'}:null})})};
  const cookie={name:'PHPSESSID',value:'synthetic-cookie',domain:'.pixiv.net',path:'/',secure:true};
  const chrome={tabs:{query:async()=>[{id:1,url:'https://www.pixiv.net/en/'}]},scripting:{executeScript:async({func})=>[{result:func()}]},cookies:{getAll:async()=>{events.push('read');return [cookie,{name:'SID',value:'unrelated',domain:'.google.com',path:'/',secure:true},...(duplicate?[cookie]:[])]}},permissions:{request:async value=>{events.push({grant:value});return grant},remove:async value=>{events.push({remove:value});return true}}};
  const fetch=async(url,options={})=>{
@@ -19,7 +19,8 @@ async function scenario({ready=true,grant=true,hash='12345/'+'a'.repeat(48),plat
 }
 (async()=>{
  const success=await scenario();const post=success.events.find(v=>v.post)?.post;assert.ok(post);assert.equal(post.cookies.length,1);assert.equal(post.cookies[0].name,'PHPSESSID');assert.equal(post.ready,true);assert.ok(success.events.some(v=>v.remove));assert.match(success.nodes.status.textContent,/verification result/);
- for(const options of [{ready:false},{grant:false},{duplicate:true},{platform:'discord'},{hash:'70000/'+'a'.repeat(48)},{hash:'12345/not-a-pairing-capability'}]){
+ const modern=await scenario({next:true});assert.ok(modern.events.some(v=>v.post),'authenticated Next.js bootstrap can hand off the selected session');
+ for(const options of [{ready:false},{ready:false,next:true},{grant:false},{duplicate:true},{platform:'discord'},{hash:'70000/'+'a'.repeat(48)},{hash:'12345/not-a-pairing-capability'}]){
   const r=await scenario(options);assert.ok(!r.events.some(v=>v.post),'invalid or incomplete contexts must never transfer credentials');
   if(options.grant===false||options.ready===false)assert.ok(!r.events.includes('read'),'rejected or anonymous page must not read cookies');
  }
