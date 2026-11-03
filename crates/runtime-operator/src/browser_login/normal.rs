@@ -17,12 +17,15 @@ use std::{
 };
 const ORIGIN: &str = "chrome-extension://ogmckfbpliahokocgfcebhicpjokpdag";
 const MAX_BODY: usize = 32768;
-const FILES: &[(&str, &str)] = &[
-    ("manifest.json", include_str!("extension/manifest.json")),
-    ("connect.html", include_str!("extension/connect.html")),
-    ("connect.js", include_str!("extension/connect.js")),
-    ("style.css", include_str!("extension/style.css")),
-    ("probe.svg", include_str!("extension/probe.svg")),
+const FILES: &[(&str, &[u8])] = &[
+    ("manifest.json", include_bytes!("extension/manifest.json")),
+    ("connect.html", include_bytes!("extension/connect.html")),
+    ("connect.js", include_bytes!("extension/connect.js")),
+    ("style.css", include_bytes!("extension/style.css")),
+    ("probe.svg", include_bytes!("extension/probe.svg")),
+    ("icon-16.png", include_bytes!("extension/icon-16.png")),
+    ("icon-32.png", include_bytes!("extension/icon-32.png")),
+    ("icon-128.png", include_bytes!("extension/icon-128.png")),
 ];
 pub struct Context {
     pub account: String,
@@ -81,7 +84,7 @@ fn install() -> Result<PathBuf> {
             return Err("browser_extension_directory_unavailable".into());
         }
         let result = file
-            .write_all(source.as_bytes())
+            .write_all(source)
             .and_then(|_| file.sync_all())
             .and_then(|_| fs::rename(&staging, path.join(name)));
         if result.is_err() {

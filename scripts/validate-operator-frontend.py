@@ -64,7 +64,7 @@ source = source.replace('<script src="app.js" defer></script>', '<script src="ap
 tests = args.tests.read_text().replace("textContent:JSON.stringify(results)}));", "textContent:JSON.stringify(results)}));fetch('/synthetic-result',{method:'POST',body:JSON.stringify(results)});")
 assert "fetch('/synthetic-result'" in tests
 routes = {'/' + nonce: (source.encode(), 'text/html; charset=utf-8'), '/test.js': (tests.encode(), 'application/javascript')}
-for name, mime in [('app.js', 'application/javascript'), ('console.js','application/javascript'),('locale.js','application/javascript'),('selects.js','application/javascript'),('window.js','application/javascript'),('input.js','application/javascript'),('styles.css', 'text/css')]:
+for name, mime in [('app.js', 'application/javascript'), ('console.js','application/javascript'),('locale.js','application/javascript'),('selects.js','application/javascript'),('window.js','application/javascript'),('input.js','application/javascript'),('styles.css', 'text/css'),('glimlink.svg', 'image/svg+xml')]:
     routes['/' + name] = ((args.frontend / name).read_bytes(), mime)
 for asset in (args.frontend / 'brands').iterdir():
     if asset.suffix in {'.ico', '.png', '.jpg', '.svg'}:

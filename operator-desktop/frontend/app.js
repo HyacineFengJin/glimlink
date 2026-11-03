@@ -27,6 +27,7 @@ const states = new Map(platforms.map((platform) => [platform.id, {
   capabilities: null,
   checked: false,
   error: null,
+  loginSaved: false,
 }]));
 let connection = { mode: 'local', destination: null, runtime_binary: null, state: '.runtime/state', account: 'main' };
 let selectedMode = 'local';
@@ -218,6 +219,7 @@ function render() {
     const [statusText, statusClass] = presentation(state.status);
     const current = active?.platform === platform.id;
     const paused = platform.paused || state.capabilities?.paused;
+    const connected = state.loginSaved || ['saved_session', 'saved_token', 'authenticated', 'online'].includes(state.status);
     const card = element('article', `account-card tone-${platform.tone}${paused ? ' paused' : ''}${current ? ' active' : ''}${statusClass === 'verified' ? ' verified' : ''}`);
     card.dataset.platform = platform.id;
     card.dataset.kind = platform.kind;
@@ -247,15 +249,16 @@ function render() {
     detail.title = state.detail;
     const actions = element('div', 'account-actions');
     const login = element('button', 'login-button', paused ? '暂停测试' : current ? (active.id ? '取消登录' : '正在启动…') : state.status === 'authenticated' || state.status === 'online' ? '核验与复用 ↗' : platform.id === 'github' ? '在浏览器中授权 ↗' : platform.id === 'qq' ? '扫码登录 ↗' : '在浏览器中登录 ↗');
+    login.hidden = connected && !current && !paused;
     login.disabled = !bridge || paused || refreshing || connectionDirty || (active && !current) || (current && !active.id);
     login.addEventListener('click', () => current ? cancelLogin() : beginLogin(platform.id, platform.id === 'qq' ? 'qr' : 'auto'));
     const check = element('button', 'account-check');
     check.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a7 7 0 1 0 .4 7M18 3v5h-5"/></svg>';
     const webLogin=['bilibili','tieba','x','pixiv','reddit','discord'].includes(platform.id);
-    check.title = webLogin ? '重新连接' : `检查 ${platform.name} 状态`;
+    check.title = webLogin || connected ? '重新连接' : `检查 ${platform.name} 状态`;
     check.setAttribute('aria-label', check.title);
     check.disabled = !bridge || paused || Boolean(active) || refreshing || connectionDirty || state.status === 'checking';
-    check.addEventListener('click', () => webLogin ? beginLogin(platform.id,'browser') : checkOne(platform.id));
+    check.addEventListener('click', () => webLogin ? beginLogin(platform.id,'browser') : connected ? beginLogin(platform.id,platform.id === 'qq' ? 'qr' : 'auto') : checkOne(platform.id));
     actions.append(login, check);
     card.append(top, name, accountName, detail, actions);
     if (state.error === 'state_busy' && !paused) {
@@ -295,6 +298,7 @@ function markBridgeAvailable() {
 async function checkOne(platform, quiet = false) {
   if (active || !bridge || connectionDirty) return;
   const state = states.get(platform);
+  state.loginSaved = state.loginSaved || ['saved_session', 'saved_token', 'authenticated', 'online'].includes(state.status);
   state.status = 'checking'; state.error = null; state.detail = '读取可用方式与已有登录状态…'; render();
   try {
     const capabilities = await invoke('platform_capabilities', { connection, platform });
@@ -305,6 +309,7 @@ async function checkOne(platform, quiet = false) {
       const value = await invoke('account_status', { connection, platform });
       state.displayName=safeIdentity(value);
       state.status = value.status || (value.authenticated === true ? 'authenticated' : 'unknown');
+      state.loginSaved = ['saved_session', 'saved_token', 'authenticated', 'online'].includes(state.status);
       state.detail = state.displayName ? '账号名称来自已连接的平台。' : (state.status === 'saved_session' || state.status === 'saved_token' ? '本地已保存，尚未核验服务端有效性' : state.status === 'signed_out' ? `账号别名 ${connection.account} 尚未登录` : platformFor(platform).description);
     }
     state.checked = true;
@@ -510,6 +515,8 @@ function handleLoginEvent(payload) {
   if (payload.kind === 'finished') {
     const status = data.status || 'failed';
     state.status = status; state.checked = true;
+    if (['saved_session', 'saved_token', 'authenticated', 'online'].includes(status)) state.loginSaved = true;
+    else if (['signed_out', 'needs_auth', 'login_required'].includes(status)) state.loginSaved = false;
     const displayName=safeIdentity(data);if(displayName)state.displayName=displayName;
     state.error = data.error?.code ? publicCode(data.error) : null;
     state.detail = status === 'authenticated' ? (data.reused_session ? '已核验并复用原有登录态' : '登录已确认，账号状态已保存') : data.error ? `${publicCode(data.error)} · ${publicMessage(data.error)}` : status === 'cancelled' ? '验证会话已关闭，已有登录态保留。' : '操作已结束，请检查账号状态。';
@@ -569,7 +576,7 @@ async function applyConnection(event) {
   $('#connection-summary').textContent = selectedMode === 'ssh' ? `通过 SSH 控制 ${destination}` : '控制这台电脑上的 Runtime';
   $('#connection-feedback').textContent = connection.mode === 'ssh' ? '使用系统 SSH 密钥与 known_hosts；首次连接请先在终端确认主机。' : '配置已应用。连接本机 Runtime，不需要 SSH。';
   $('#connection-feedback').classList.remove('error');
-  for (const platform of platforms) Object.assign(states.get(platform.id), { status: platform.paused ? 'paused' : 'unknown', detail: platform.description, displayName:null, checked: false, error: null });
+  for (const platform of platforms) Object.assign(states.get(platform.id), { status: platform.paused ? 'paused' : 'unknown', detail: platform.description, displayName:null, checked: false, error: null, loginSaved:false });
   note(selectedMode === 'ssh' ? '已选择 SSH 控制通道' : '已选择本地控制通道');
   window.dispatchEvent(new Event('operator:connection'));
   await refreshAll();

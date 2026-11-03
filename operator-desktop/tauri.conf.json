@@ -24,5 +24,5 @@
       "capabilities": ["main"]
     }
   },
-  "bundle": { "active": false, "icon": [] }
+  "bundle": { "active": false, "icon": ["icons/icon.png"] }
 }

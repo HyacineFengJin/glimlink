@@ -156,7 +156,7 @@
       {
         "path": "operator-desktop/icons/icon.png",
         "sha256": "6e520543e7f3a2d56ca78ec38d99b4dff0fc96cb291e28f814cb589b8aaf38c6",
-        "origin": "Project-authored 64x64 RGBA application glyph; provenance in operator-desktop/icons/README.md",
+        "origin": "Project-authored 512x512 RGBA firefly application icon, exported from the original SVG; provenance in operator-desktop/icons/README.md",
         "license": "MIT"
       },
       {
@@ -207,6 +207,21 @@
         "origin": "OpenAI; exact official source in frontend/brands/sources.json",
         "license": "Third-party trademark/copyright asset, not MIT",
         "approval_scope": "Reviewed source asset path only, not a public redistribution clearance"
+      },
+      {
+        "path": "crates/runtime-operator/src/browser_login/extension/icon-16.png",
+        "license": "MIT",
+        "origin": "Project-authored Glimlink firefly icon, exported by scripts/generate-brand.py"
+      },
+      {
+        "path": "crates/runtime-operator/src/browser_login/extension/icon-32.png",
+        "license": "MIT",
+        "origin": "Project-authored Glimlink firefly icon, exported by scripts/generate-brand.py"
+      },
+      {
+        "path": "crates/runtime-operator/src/browser_login/extension/icon-128.png",
+        "license": "MIT",
+        "origin": "Project-authored Glimlink firefly icon, exported by scripts/generate-brand.py"
       }
     ],
     "excluded_source_paths": [

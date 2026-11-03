@@ -1,5 +1,9 @@
-# Original application glyph
+# Original Glimlink artwork
 
-`icon.png` is project-authored 64×64 RGBA artwork, offered under MIT. It uses
-only a lavender rounded square and three linked purple circles. No third-party
-icon set, font, platform logo or downloaded image is incorporated.
+Glimlink's mark is a small firefly with two open wings and a luminous tail.
+The editable source is `../frontend/glimlink.svg`. All project brand artwork
+is original and offered under MIT; no third-party graphics or fonts are included.
+
+Run `python3 scripts/generate-brand.py` from the repository to regenerate
+`icon.svg`, the 512×512 RGBA application icon, and browser extension assets.
+The authoring script requires `rsvg-convert`; builds use the checked-in exports.

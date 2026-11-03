@@ -1,1 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><!-- SPDX-License-Identifier: MIT --><rect x="7" y="20" width="8" height="22" rx="4" fill="#663bdc" transform="rotate(-12 11 31)"/><rect x="19" y="7" width="9" height="34" rx="4.5" fill="#663bdc" transform="rotate(-12 23 24)"/><rect x="33" y="23" width="8" height="16" rx="4" fill="#394b18" transform="rotate(-12 37 31)"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- SPDX-License-Identifier: MIT -->
+  <g fill="#663BDD">
+    <path d="M33 28C23 28 9 23 10 15c1-8 11-10 17-3 4 5 6 16 6 16Z"/>
+    <path d="M38 33c0 10 5 24 13 23 8-1 10-11 3-17-5-4-16-6-16-6Z"/>
+    <rect x="33" y="20" width="8" height="20" rx="4" transform="rotate(45 37 30)"/>
+    <circle cx="46" cy="17" r="5"/>
+  </g>
+  <rect x="19" y="31" width="12" height="24" rx="6" fill="#BDDA54" transform="rotate(45 25 43)"/>
+</svg>
