@@ -1,2 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 :root{font:16px system-ui,sans-serif;color:#292035;background:#f6f2fa}body{margin:0;padding:7vh 24px}main{max-width:520px;margin:auto;padding:34px;background:#fffbff;border:1px solid #d8c9ee;border-radius:36px 14px 36px 36px}h1{font-size:30px;line-height:1.2}p{line-height:1.65;overflow-wrap:anywhere}.eyebrow{color:#6339d5;font-size:11px;letter-spacing:.15em;font-weight:800}button{border:0;border-radius:28px;padding:14px 24px;background:#663bdc;color:white;font:inherit;font-weight:700;cursor:pointer}button:disabled{background:#e7def4;color:#746b81;cursor:default}#status{margin-top:24px}#scope{color:#655b71}a{color:#6339d5}
+:root[data-state="busy"] button{background:#e7def4;color:#492799;cursor:progress}
+:root[data-state="submitted"] button{background:#d1edda;color:#155334}
+:root[data-state="submitted"] #status{padding:16px 20px;border-radius:22px;background:#e7f5ec;color:#155334}
+:root[data-state="expired"] button{background:#f5deda;color:#853c33}
+@media(prefers-reduced-motion:no-preference){button{transition:background .16s,color .16s}}

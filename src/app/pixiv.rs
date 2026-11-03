@@ -61,6 +61,13 @@ fn artwork_id(reference: &str) -> Result<String> {
     platform_pixiv::id(value).map_err(err)?;
     Ok(value.into())
 }
+fn home_rows(raw: &Value) -> Result<impl Iterator<Item = &Value>> {
+    let rows = raw
+        .pointer("/thumbnails/illust")
+        .and_then(Value::as_array)
+        .ok_or("Pixiv homepage schema changed")?;
+    Ok(rows.iter().filter(|row| row["xRestrict"].as_u64() == Some(0)))
+}
 impl Runtime {
     pub(super) fn pixiv_task_matches(&self, method: &str, params: &Value) -> bool {
         if !method.starts_with("social.") {
@@ -262,16 +269,13 @@ impl Runtime {
         }
         if action == "home" {
             let raw = client.home().map_err(err)?;
-            let rows = raw
-                .pointer("/thumbnails/illust")
-                .and_then(Value::as_array)
-                .ok_or("Pixiv homepage schema changed")?;
+            let rows = home_rows(&raw)?;
             let limit = number(params, "limit", 10)?;
             if !(1..=20).contains(&limit) {
                 return Err("Pixiv limit must be 1..20".into());
             }
             let mut items = Vec::new();
-            for row in rows.iter().take(limit as usize) {
+            for row in rows.take(limit as usize) {
                 let mut item = platform_pixiv::artwork_view(row).map_err(err)?;
                 let artwork = item["id"]
                     .as_str()
@@ -335,6 +339,21 @@ impl Runtime {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn safe_recommendations_filter_before_limiting_and_skip_unknown_restrictions() {
+        let raw = json!({"thumbnails":{"illust":[
+            {"id":"1","xRestrict":1},{"id":"2","xRestrict":2},
+            {"id":"3"},{"id":"4","xRestrict":"0"},
+            {"id":"5","xRestrict":0},{"id":"6","xRestrict":0}
+        ]}});
+        let ids = home_rows(&raw)
+            .unwrap()
+            .take(1)
+            .map(|row| row["id"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(ids, vec!["5"]);
+        assert!(home_rows(&json!({"thumbnails":{}})).is_err());
+    }
     #[test]
     fn exact_pixiv_artwork_references_cannot_become_arbitrary_requests() {
         assert_eq!(

@@ -6,7 +6,24 @@ const profiles=Object.freeze({pixiv:{name:'pixiv',roots:['https://www.pixiv.net/
 const zh=navigator.language.toLowerCase().startsWith('zh');
 const say=(en,cn)=>zh?cn:en;
 const button=document.getElementById('connect'),status=document.getElementById('status');
-let request=null,base=null,profile=null;
+let request=null,base=null,profile=null,expiryTimer=null,busy=false,expired=false;
+function show(state,label,message){
+  document.documentElement.dataset.state=state;
+  button.textContent=label;
+  status.textContent=message;
+}
+function expire(){
+  clearTimeout(expiryTimer);
+  expired=true;request=null;
+  if(busy)return;
+  button.disabled=true;
+  show('expired',say('Connection expired','连接已过期'),say('This connection has expired. Start a new connection in Operator.','这个连接已过期，请从操控端重新连接。'));
+}
+function retry(message){
+  if(expired){expire();return}
+  button.disabled=false;
+  show('ready',say('Try again','重试连接'),message);
+}
 window.addEventListener('pagehide',()=>{if(profile)chrome.permissions.remove({origins:profile.roots.map(root=>root+'*')}).catch(()=>{})});
 async function rpc(path,options={}){
   const response=await fetch(base+path,{...options,credentials:'omit',redirect:'error',cache:'no-store',referrerPolicy:'no-referrer',signal:AbortSignal.timeout(10000)});
@@ -37,43 +54,53 @@ async function readSelectedSession(){
 }
 button.addEventListener('click',()=>{
   if(!request||!profile||button.disabled)return;
-  button.disabled=true;
+  button.disabled=true;busy=true;
+  show('busy',say('Waiting for browser permission…','等待浏览器授权…'),say('Allow temporary pixiv access in the browser prompt to continue.','请在浏览器弹窗中允许临时访问 pixiv，以继续连接。'));
   const origins=profile.roots.map(root=>root+'*');
   // Must remain the first asynchronous action: Chrome requires a user gesture.
   const grant=chrome.permissions.request({origins});
   (async()=>{
-    let cookies=null;
+    let cookies=null,failure=null;
     try{
       if(!await grant)throw new Error('permission_denied');
+      if(expired)throw new Error('bridge_unavailable');
+      button.textContent=say('Connecting…','正在连接…');
       status.textContent=say('Reading the selected signed-in account…','正在读取选中的已登录账号…');
       cookies=await readSelectedSession();
       const result=await rpc('/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({version:1,platform:request.platform,ready:true,cookies})});
       if(result.submitted!==true)throw new Error('bridge_unavailable');
-      request=null;
-      status.textContent=say('Session handed to Runtime. Return to Operator for the verification result.','会话已交给 Runtime。请回操控端查看账号核验结果。');
+      clearTimeout(expiryTimer);request=null;
+      document.getElementById('heading').textContent=say('Session handed off','会话已交接');
+      show('submitted',say('✓ Session handed off','✓ 会话已交接'),say('No more clicks are needed here. Return to Operator for the Runtime verification result. You can close this tab.','这里的操作已完成，无需再点。请回操控端查看 Runtime 核验结果，可以关闭此页。'));
     }catch(error){
-      status.textContent=error.message==='not_ready'?say('Keep an already signed-in pixiv homepage open in this browser, then try again. A login or security-check page is not sufficient.','请在这个浏览器保留已登录的 pixiv 首页，再重试。登录页或人机验证页不代表登录完成。'):error.message==='permission_denied'?say('Site access was not granted. Nothing was transferred.','未授予站点访问权限，没有交接会话。'):say('Connection expired or failed. Open a new connection from Operator.','连接已过期或未完成，请从操控端重新连接。');
-      button.disabled=false;
+      failure=error.message;
     }finally{
       cookies=null;
-      try{if(await chrome.permissions.remove({origins})!==true)throw new Error('revoke_failed')}catch{status.textContent+=' '+say('Site access could not be revoked automatically. Remove pixiv access in the extension manager.','未能自动撤销站点权限，请在扩展管理页移除 pixiv 访问权限。')}
+      let revoked=true;
+      try{revoked=await chrome.permissions.remove({origins})===true}catch{revoked=false}
+      busy=false;
+      if(failure==='not_ready')retry(say('Keep an already signed-in pixiv homepage open in this browser, then try again. A login or security-check page is not sufficient.','请在这个浏览器保留已登录的 pixiv 首页，再重试。登录页或人机验证页不代表登录完成。'));
+      else if(failure==='permission_denied')retry(say('Site access was not granted. Nothing was transferred.','未授予站点访问权限，没有交接会话。'));
+      else if(failure)expire();
+      if(!revoked)status.textContent+=' '+say('Site access could not be revoked automatically. Remove pixiv access in the extension manager.','未能自动撤销站点权限，请在扩展管理页移除 pixiv 访问权限。');
     }
   })();
 });
 (async()=>{
   try{
     const fragment=location.hash.slice(1);
-    if(!/^\d{1,5}\/[a-f0-9]{48}$/.test(fragment))return;
+    if(!/^\d{1,5}\/[a-f0-9]{48}$/.test(fragment))throw new Error('invalid_request');
     const [port,nonce]=fragment.split('/');
-    if(Number(port)<1||Number(port)>65535)return;
+    if(Number(port)<1||Number(port)>65535)throw new Error('invalid_request');
     base=`http://127.0.0.1:${port}/${nonce}`;
     const value=await rpc('/request');
-    if(value.version!==1||!Object.hasOwn(profiles,value.platform)||typeof value.account!=='string'||value.account.length>128||typeof value.destination!=='string'||value.destination.length>512||typeof value.expires_in_seconds!=='number'||value.expires_in_seconds<=0)throw new Error('invalid_request');
+    if(value.version!==1||!Object.hasOwn(profiles,value.platform)||typeof value.account!=='string'||value.account.length>128||typeof value.destination!=='string'||value.destination.length>512||!Number.isFinite(value.expires_in_seconds)||value.expires_in_seconds<=0||value.expires_in_seconds>3600)throw new Error('invalid_request');
     request=value;profile=profiles[value.platform];
     document.getElementById('heading').textContent=say('Connect ','连接 ')+profile.name;
     document.getElementById('target').textContent=`${value.destination} · ${value.account}`;
     document.getElementById('scope').textContent=say('Only this site’s session goes to your local Operator, then to the selected Runtime. Site access is revoked afterwards.','仅交接这个站点的会话到本机操控端，再发给选中的 Runtime。交接后撤销站点访问权限。');
-    button.textContent=say('Connect this account','连接这个账号');button.disabled=false;
-    status.textContent=say('Use the account already signed in in this browser. No password is read.','使用当前浏览器已登录的账号，不读取密码。');
-  }catch{status.textContent=say('Pairing expired. Open a new connection from Operator.','配对已过期，请从操控端重新打开连接。')}
+    button.disabled=false;
+    show('ready',say('Connect this account','连接这个账号'),say('Use the account already signed in in this browser. No password is read.','使用当前浏览器已登录的账号，不读取密码。'));
+    expiryTimer=setTimeout(expire,Math.max(1,Math.floor(value.expires_in_seconds*1000)));
+  }catch{expire()}
 })();

@@ -189,7 +189,9 @@ impl Client {
         value.get("body").cloned().ok_or(Error::ProtocolChanged)
     }
     pub fn home(&self) -> Result<Value> {
-        self.ajax("/ajax/top/illust?mode=safe&lang=en")
+        // The website accepts `all`; `safe` produces HTTP 400. The Runtime
+        // retains only explicitly unrestricted entries before exposing a feed.
+        self.ajax("/ajax/top/illust?mode=all&lang=en")
     }
     pub fn artwork(&self, artwork: &str) -> Result<Value> {
         id(artwork)?;
@@ -256,6 +258,7 @@ fn status(status: u16) -> Result<()> {
     match status {
         200 => Ok(()),
         301 | 302 | 303 | 307 | 308 | 401 => Err(Error::LoginRequired),
+        400 => Err(Error::ProtocolChanged),
         403 => Err(Error::VerificationRequired),
         404 => Err(Error::NotFound),
         429 => Err(Error::RateLimited),
