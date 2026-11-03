@@ -9,6 +9,8 @@ agentctl --account bili-main bili import-login --secret-file /private/bilibili-c
 agentctl --account tieba-main tieba import-login --secret-file /private/tieba-bduss.txt
 agentctl --account qq-main qq login --method password
 agentctl --account pixiv-main pixiv login
+agentctl --account reddit-main reddit login
+agentctl --account discord-main discord login
 ```
 
 QQ 账号与密码可在操控端终端输入，密码隐藏回显；验证码通过同一控制会话回传 proof，核心保持原 TCP。不要以多个独立 Runtime 进程模拟同连接续验。跨进程恢复只支持明确选择的 `--resume-from-disk`，会标注 `reconnected_from_disk`。核心没有验证码网页监听器。完整协议见 [操控端](operator-control.md)。
@@ -26,6 +28,8 @@ agent-runtime --account tieba-main tieba import-login /private/tieba-bduss.txt
 | --- | --- | --- |
 | Bilibili | 本 Runtime 的 `session.json`，或一行 Cookie header；可带 `Cookie:` 前缀 | Cookie 至少包含 `SESSDATA`、`bili_jct`。调用已有 current-user 接口获得 MID；若提供 `DedeUserID` 必须一致。只保存已支持的账号 Cookie，不编造 refresh token。 |
 | 贴吧 | 本 Runtime 的 `session.json`，一行 Cookie header，或裸正式 `BDUSS` | 复用已有固定域名的用户身份与必要子站握手；不发起二维码或临时票据交换。可保留 `STOKEN` 等必要账号 Cookie。 |
+| Reddit | 操控端浏览器自动交接的当前站点会话 | 独立读取本人资料后保存；推荐首页、帖子、有限评论与按需图片只读，真实账号验收待完成。 |
+| Discord | 操控端浏览器自动交接的个人网页会话 | 独立核验本人身份后保存；私聊/服务器/频道选择、消息历史和附件只读，真实账号验收待完成。 |
 | pixiv | 操控端浏览器自动交接的 `PHPSESSID`，或私有 Cookie header 文件 | 从已登录网页的 `userData` 独立核验账号，不从 Cookie 前缀猜身份；当前提供只读推荐、作品信息与按需读图。 |
 
 导入完成后，账号按同一别名进入普通工具的自动选择和不透明引用归属流程。服务端拒绝、验证码/风险验证、身份不匹配均会返回明确失败，不自动改走二维码。只有身份核实成功且与别名绑定一致才原子替换保存的登录态；失败不会删除原会话或重定向别名到另一个人。

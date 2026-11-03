@@ -14,6 +14,8 @@ const platforms = [
   { id: 'tieba', name: '贴吧', kind: 'social', label: '社区', tone: 'indigo', description: '帖子与楼中楼讨论' },
   { id: 'x', name: 'X', kind: 'social', label: '网页会话', tone: 'carbon', description: '浏览器登录，自动连接账号' },
   { id: 'pixiv', name: 'pixiv', kind: 'social', label: '插画与漫画', tone: 'blue', description: '作品、推荐与按需读图' },
+  { id: 'reddit', name: 'Reddit', kind: 'social', tone: 'rose', description: '' },
+  { id: 'discord', name: 'Discord', kind: 'social', tone: 'indigo', description: '' },
   { id: 'github', name: 'GitHub', kind: 'application', label: '开发协作', tone: 'stone', description: '仓库、Issue 与 PR' },
   { id: 'codex', name: 'Codex', kind: 'agent', label: '订阅登录', tone: 'sage', description: '原生 Codex 订阅 · 共享人格与记忆' },
   { id: 'antigravity', name: 'Antigravity', kind: 'agent', label: '订阅登录', tone: 'iris', description: 'Google 订阅授权 · 共享人格与记忆' },
@@ -235,41 +237,30 @@ function render() {
     const badge = element('span', `account-state ${statusClass}`, statusText);
     top.append(icon, badge);
     const name = element('div', 'account-name');
-    name.append(element('h3', '', platform.name), element('span', 'platform-tag', platform.label));
-    const accountName=element('p',`account-display-name${state.displayName?'':' pending-identity'}`,state.displayName || (['saved_session','saved_token'].includes(state.status)?'已保存账号，平台暂未提供名称':['online','authenticated'].includes(state.status)?'已登录，平台暂未提供名称':state.checked?'未登录':'未核验账号'));
+    name.append(element('h3', '', platform.name));
+    const accountName=element('p','account-display-name',state.displayName || '');
+    accountName.hidden=!state.displayName;
     if(state.displayName)accountName.setAttribute('translate','no');
-    const detail = element('p', 'account-detail', state.detail);
+    const message=(current || state.status==='checking') ? state.detail : state.error ? connectionErrorMessage(state.error) : '';
+    const detail = element('p', 'account-detail', message);
+    detail.hidden=!message;
     detail.title = state.detail;
     const actions = element('div', 'account-actions');
-    const login = element('button', 'login-button', paused ? '暂停测试' : current ? (active.id ? '取消登录' : '正在启动…') : state.status === 'authenticated' || state.status === 'online' ? '核验与复用 ↗' : platform.id === 'github' ? '在浏览器中授权 ↗' : platform.id === 'x' ? '连接 X ↗' : '在浏览器中登录 ↗');
+    const login = element('button', 'login-button', paused ? '暂停测试' : current ? (active.id ? '取消登录' : '正在启动…') : state.status === 'authenticated' || state.status === 'online' ? '核验与复用 ↗' : platform.id === 'github' ? '在浏览器中授权 ↗' : platform.id === 'qq' ? '扫码登录 ↗' : '在浏览器中登录 ↗');
     login.disabled = !bridge || paused || refreshing || connectionDirty || (active && !current) || (current && !active.id);
     login.addEventListener('click', () => current ? cancelLogin() : beginLogin(platform.id, platform.id === 'qq' ? 'qr' : 'auto'));
     const check = element('button', 'account-check');
     check.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a7 7 0 1 0 .4 7M18 3v5h-5"/></svg>';
-    check.title = `检查 ${platform.name} 状态`;
+    const webLogin=['bilibili','tieba','x','pixiv','reddit','discord'].includes(platform.id);
+    check.title = webLogin ? '重新连接' : `检查 ${platform.name} 状态`;
     check.setAttribute('aria-label', check.title);
     check.disabled = !bridge || paused || Boolean(active) || refreshing || connectionDirty || state.status === 'checking';
-    check.addEventListener('click', () => checkOne(platform.id));
+    check.addEventListener('click', () => webLogin ? beginLogin(platform.id,'browser') : checkOne(platform.id));
     actions.append(login, check);
     card.append(top, name, accountName, detail, actions);
     if (state.error === 'state_busy' && !paused) {
       const stop = element('button','login-worker-stop','停止后台后登录');stop.type='button';stop.disabled=!bridge || Boolean(active) || refreshing || connectionDirty;
       stop.addEventListener('click',()=>stopWorkerAndLogin(platform.id));card.append(stop);
-    }
-    if (platform.id === 'github') {
-      const manual=element('button','x-refresh-login','使用已有 Token');manual.type='button';manual.disabled=!bridge || Boolean(active) || refreshing || connectionDirty;manual.addEventListener('click',()=>beginLogin('github','token'));card.append(manual);
-    }
-    if (['bilibili', 'tieba'].includes(platform.id)) {
-      const qr = element('button', 'x-refresh-login', '改用扫码登录');
-      qr.type='button';qr.disabled=!bridge || Boolean(active) || refreshing || connectionDirty;
-      qr.addEventListener('click',()=>beginLogin(platform.id,'qr'));card.append(qr);
-    }
-    if (['x', 'bilibili', 'tieba', 'pixiv'].includes(platform.id)) {
-      const update = element('button', 'x-refresh-login', '重新登录');
-      update.type = 'button';
-      update.disabled = !bridge || paused || refreshing || connectionDirty || Boolean(active);
-      update.addEventListener('click', () => beginLogin(platform.id, 'browser'));
-      card.append(update);
     }
     return card;
   });
@@ -287,6 +278,14 @@ function render() {
   $('#cancel-active').disabled = !active?.id;
   $('#refresh-all').disabled = !bridge || Boolean(active) || refreshing || connectionDirty;
   $('#connection-form').querySelectorAll('input,button,summary').forEach((node) => { if ('disabled' in node) node.disabled = Boolean(active) || refreshing || (!bridge && node.type === 'submit'); });
+}
+function connectionErrorMessage(code) {
+  if (['protocol_changed','verification_required','needs_auth'].includes(code)) return '尚未完成账号核验，请重新连接。';
+  if (code==='browser_not_found') return '请先安装 Chrome、Chromium 或 Edge。';
+  if (code==='state_busy') return '请先停止后台，再连接账号。';
+  if (code==='rate_limited') return '平台暂时限流，请稍后重试。';
+  if (code==='operator_timeout') return '登录已超时，请重试。';
+  return '连接未完成，请重试。';
 }
 function markBridgeAvailable() {
   const badge = $('#bridge-badge');

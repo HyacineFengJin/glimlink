@@ -55,6 +55,7 @@ dependencies = [
  "platform-pixiv",
  "platform-qq",
  "platform-tieba",
+ "platform-web",
  "platform-weixin",
  "platform-x",
  "qrcode",
@@ -1551,6 +1552,15 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "md-5",
+ "serde",
+ "serde_json",
+ "ureq",
+]
+
+[[package]]
+name = "platform-web"
+version = "0.1.0"
+dependencies = [
  "serde",
  "serde_json",
  "ureq",

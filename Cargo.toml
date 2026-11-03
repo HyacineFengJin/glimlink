@@ -60,6 +60,7 @@ platform-qq = { path = "crates/platform-qq" }
 platform-github = { path = "crates/platform-github" }
 platform-x = { path = "crates/platform-x" }
 platform-pixiv = { path = "crates/platform-pixiv" }
+platform-web = { path = "crates/platform-web" }
 platform-weixin = { path = "crates/platform-weixin", optional = true }
 runtime-media = { path = "crates/runtime-media" }
 runtime-speech = { path = "crates/runtime-speech" }

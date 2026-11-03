@@ -69,6 +69,8 @@ pub enum Platform {
     #[serde(alias = "twitter")]
     X,
     Pixiv,
+    Reddit,
+    Discord,
     Codex,
     Antigravity,
     Weixin,
@@ -83,6 +85,8 @@ impl Platform {
             Self::Github => "github",
             Self::X => "x",
             Self::Pixiv => "pixiv",
+            Self::Reddit => "reddit",
+            Self::Discord => "discord",
             Self::Codex => "codex",
             Self::Antigravity => "antigravity",
             Self::Weixin => "weixin",
@@ -100,6 +104,8 @@ impl std::str::FromStr for Platform {
             "github" => Ok(Self::Github),
             "x" | "twitter" => Ok(Self::X),
             "pixiv" => Ok(Self::Pixiv),
+            "reddit" => Ok(Self::Reddit),
+            "discord" => Ok(Self::Discord),
             "codex" => Ok(Self::Codex),
             "antigravity" | "agy" => Ok(Self::Antigravity),
             "weixin" | "wechat" => Ok(Self::Weixin),
@@ -229,6 +235,8 @@ impl Request {
                     | Platform::Github
                     | Platform::X
                     | Platform::Pixiv
+                    | Platform::Reddit
+                    | Platform::Discord
             ),
             Action::PasswordLogin | Action::PasswordResume | Action::Challenge => {
                 self.platform == Platform::Qq

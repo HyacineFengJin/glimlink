@@ -18,7 +18,7 @@ pub fn specs() -> Vec<DynamicToolSpec> {
     let account = json!({"type":"string","description":"Optional saved account alias. A sole saved account is selected automatically. References retain their original account; an override must match."});
     let target = json!({"type":"string","description":"Opaque target_ref returned by social_open, lists or discussion. Do not construct provider IDs."});
     let continuation = json!({"type":"string","description":"Opaque continuation returned by this task. Runtime restores account, pagination and deduplication; pass it unchanged."});
-    let provider = json!({"type":"string","enum":["bilibili","tieba","x","pixiv"]});
+    let provider = json!({"type":"string","enum":["bilibili","tieba","x","pixiv","reddit","discord"]});
     let limit = json!({"type":"integer","minimum":1,"maximum":20});
     let media = json!({"type":"string","description":"Returned media_ref or cached resource ID. Runtime resolves the account, fetches on demand, detects the real format and prepares model input."});
     let quality = json!({"type":"string","enum":["preview","480p","720p","1080p"],"description":"Requested source quality, not output upscaling. Check actual dimensions/request_met; source/account limitations may prevent it."});
@@ -75,7 +75,7 @@ pub fn specs() -> Vec<DynamicToolSpec> {
         ),
         tool(
             "social_open",
-            "Open a Bilibili video, Tieba thread, X profile/post, or Pixiv artwork URL, a target_ref, or notification_ref. Pixiv returns metadata and lazy regular/original image refs; use media_read to view selected images. X uses a separately configured web session and returns post text, author, observed metrics and lazy media. Notifications resolve directly to selected comments/floors and parent context when available; unresolved or deleted content is explicit, never replaced by another reply. Runtime restores account and resolves object relationships. Media remains lazy.",
+            "Open a Bilibili video, Tieba thread, X profile/post, Pixiv artwork, Reddit post, or Discord guild/channel URL, a target_ref, or notification_ref. Pixiv returns metadata and lazy regular/original image refs; use media_read to view selected images. X uses a separately configured web session and returns post text, author, observed metrics and lazy media. Notifications resolve directly to selected comments/floors and parent context when available; unresolved or deleted content is explicit, never replaced by another reply. Runtime restores account and resolves object relationships. Media remains lazy.",
             json!({"reference":{"type":"string"},"platform":provider,"account":account}),
             &["reference"],
         ),
@@ -111,8 +111,8 @@ pub fn specs() -> Vec<DynamicToolSpec> {
         ),
         tool(
             "social_discover",
-            "Discover Bilibili videos (default platform): source=recommended reads the saved account's homepage; source=popular (compatibility default) reads public popular videos. platform=pixiv returns a safe-mode artwork recommendation snapshot with target_ref and lazy preview_media_ref; its pagination is unavailable. Bilibili recommendation refreshes are not stable pages; Runtime deduplicates continuation results. No automatic fallback or login. Media stays lazy.",
-            json!({"platform":{"type":"string","enum":["bilibili","pixiv"]},"source":{"type":"string","enum":["recommended","popular"]},"continuation":continuation,"limit":limit,"account":account}),
+            "Discover Bilibili videos (default platform): source=recommended reads the saved account's homepage; source=popular (compatibility default) reads public popular videos. platform=reddit reads the signed-in Reddit homepage with post targets and pagination. platform=pixiv returns a safe-mode artwork recommendation snapshot with target_ref and lazy preview_media_ref; its pagination is unavailable. Bilibili recommendation refreshes are not stable pages; Runtime deduplicates continuation results. No automatic fallback or login. Media stays lazy.",
+            json!({"platform":{"type":"string","enum":["bilibili","pixiv","reddit"]},"source":{"type":"string","enum":["recommended","popular"]},"continuation":continuation,"limit":limit,"account":account}),
             &[],
         ),
         tool(
@@ -135,14 +135,14 @@ pub fn specs() -> Vec<DynamicToolSpec> {
         ),
         tool(
             "social_chats",
-            "List QQ conversations observed by this Runtime plus the current account's self conversation. Returns account-bound target_ref values directly usable by social_messages/social_send; no manual UIN-to-UID conversion. kind=observed reads seen conversations, friends/groups reads native contacts, and members reads the selected group roster. By default reuse saved login and keep one chat connection alive; refresh=false reads local saved messages only. Does not send a chat message or start QR login.",
-            json!({"platform":{"type":"string","enum":["qq"]},"continuation":continuation,"account":account,"refresh":{"type":"boolean"},"kind":{"type":"string","enum":["observed","friends","groups","members"]},"target_ref":target,"limit":limit}),
+            "For platform=discord, list DMs (default) or kind=guilds; pass a returned guild target_ref to list its channels. Results are read-only. Otherwise list QQ conversations observed by this Runtime plus the current account's self conversation. Returns account-bound target_ref values directly usable by social_messages/social_send; no manual UIN-to-UID conversion. kind=observed reads seen conversations, friends/groups reads native contacts, and members reads the selected group roster. By default reuse saved login and keep one chat connection alive; refresh=false reads local saved messages only. Does not send a chat message or start QR login.",
+            json!({"platform":{"type":"string","enum":["qq","discord"]},"continuation":continuation,"account":account,"refresh":{"type":"boolean"},"kind":{"type":"string","enum":["observed","friends","groups","members","guilds"]},"target_ref":target,"limit":limit}),
             &[],
         ),
         tool(
             "social_messages",
-            "Read QQ messages collected by Runtime, for a returned chat target_ref or all conversations on the selected account. Pass continuation unchanged for the next incremental page. Runtime owns connection, heartbeat, persistent bounded inbox, deduplication and reply-target identity. wait_ms optionally waits up to 10 seconds for new messages; refresh=false reads saved data without connecting. Received images, GIF, voice, video and files expose lazy media references. history=true reads bounded native server history for the selected chat without injecting old messages into the live inbox.",
-            json!({"platform":{"type":"string","enum":["qq"]},"target_ref":target,"continuation":continuation,"start":{"type":"string","enum":["earliest","latest"],"description":"Fresh reads only. latest establishes a cursor at the newest retained message and returns no history; use its continuation for future messages."},"account":account,"refresh":{"type":"boolean"},"wait_ms":{"type":"integer","minimum":0,"maximum":10000},"history":{"type":"boolean"},"before_time":{"type":"integer","minimum":0},"start_sequence":{"type":"integer","minimum":0},"end_sequence":{"type":"integer","minimum":0},"limit":limit}),
+            "For a Discord channel/chat target_ref, read bounded live history; pass continuation to read earlier messages. Otherwise read QQ messages collected by Runtime, for a returned chat target_ref or all conversations on the selected account. Pass continuation unchanged for the next incremental page. Runtime owns connection, heartbeat, persistent bounded inbox, deduplication and reply-target identity. wait_ms optionally waits up to 10 seconds for new messages; refresh=false reads saved data without connecting. Received images, GIF, voice, video and files expose lazy media references. history=true reads bounded native server history for the selected chat without injecting old messages into the live inbox.",
+            json!({"platform":{"type":"string","enum":["qq","discord"]},"target_ref":target,"continuation":continuation,"start":{"type":"string","enum":["earliest","latest"],"description":"Fresh reads only. latest establishes a cursor at the newest retained message and returns no history; use its continuation for future messages."},"account":account,"refresh":{"type":"boolean"},"wait_ms":{"type":"integer","minimum":0,"maximum":10000},"history":{"type":"boolean"},"before_time":{"type":"integer","minimum":0},"start_sequence":{"type":"integer","minimum":0},"end_sequence":{"type":"integer","minimum":0},"limit":limit}),
             &[],
         ),
         tool(

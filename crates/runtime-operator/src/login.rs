@@ -70,6 +70,7 @@ pub struct ClientUi {
     authorization_seen: Option<String>,
     file_used: bool,
     presentation: Presenter,
+    browser_lease: Option<crate::browser_login::BrowserLease>,
 }
 fn now() -> Result<u64> {
     SystemTime::now()
@@ -105,6 +106,7 @@ impl ClientUi {
             authorization_seen: None,
             file_used: false,
             presentation: Presenter::new(options.ui),
+            browser_lease: None,
         }
     }
     fn cookies(&mut self, deadline: Instant) -> Result<Option<Secret>> {
@@ -285,9 +287,10 @@ impl Human for ClientUi {
             if !self.options.open_browser {
                 return Err("browser_session_requires_browser_or_secret_file".into());
             }
-            return crate::browser_login::capture(self.options.platform, deadline, &interrupt::CANCELLED, |status| {
+            let handoff=crate::browser_login::capture(self.options.platform, deadline, &interrupt::CANCELLED, |status| {
                 eprintln!("Browser login: {status}");
-            });
+            })?;
+            return Ok(handoff.map(|handoff|{let (secret,lease)=handoff.into_parts();self.browser_lease=Some(lease);secret}));
         }
         if required.kind == SecretInputKind::Cookies {
             return self.cookies(deadline);
@@ -344,6 +347,7 @@ impl Human for ClientUi {
             .map_or(UiStatus::Active, |portal| portal.status())
     }
     fn close(&mut self) {
+        self.browser_lease=None;
         self.presentation.close();
         self.portal = None;
     }
@@ -1144,6 +1148,7 @@ mod tests {
             authorization_seen: None,
             file_used: false,
             presentation: Presenter::fixture(UiMode::Webview, helper.clone()),
+            browser_lease:None,
         };
         let challenge=Challenge{kind:"captcha".into(),challenge_id:"synthetic-fingerprint".into(),expires_at:(now().unwrap()+120) as u32,verify_url:"https://ti.qq.com/safe/tools/captcha/sms-verify-login?aid=123&login_appid=456&sid=raw%2Bsid&uin=42".into()};
         let started = Instant::now();
@@ -1172,6 +1177,7 @@ mod tests {
             authorization_seen: None,
             file_used: false,
             presentation: Presenter::fixture(options.ui, "/not/a/helper".into()),
+            browser_lease:None,
         };
         // --no-open is set by options(), so this only exercises routing and
         // printing a synthetic URL; no browser or native helper is launched.

@@ -41,18 +41,18 @@ capabilities. Existing session import is also explicitly available through
 
 ## Private input and continuation
 
-Bilibili, Tieba, X and Pixiv prefer the saved Runtime session. If a new login is
+Bilibili, Tieba, X, Pixiv, Reddit and Discord prefer the saved Runtime session. If a new login is
 needed, `browser` asks for `browser_session` on the same private control flow.
 The operator launches an installed Chrome/Chromium/Edge/Brave with a temporary
 0700 non-default profile and an inherited debugging pipe. No debugging TCP port
 is opened. Google/Apple sign-in stays inside that real browser; only cookies
-needed by the selected destination platform are retained. Neither the full
+needed by the selected destination platform are retained (Discord uses its own user-session token). Neither the full
 profile nor third-party sign-in cookies are transferred.
 
 The browser session travels directly from Rust through local/SSH stdio. It is
 absent from Tauri responses/events, AI context and activity logs. Runtime makes
 an independent account request and checks the alias binding before saving. A
-browser landing is not proof of a usable VPS session. Cancel/expiry closes the
+browser landing or anonymous Cookie is not proof of login. Positive authenticated-page readiness is required before handing off; the owned browser stays open until Runtime verification ends. Cancel/expiry closes the
 owned browser and removes its temporary profile; existing Runtime credentials
 remain. This path requires an installed supported browser on the operator,
 not on the VPS. Bilibili/Tieba retain explicit `--method qr`; private session

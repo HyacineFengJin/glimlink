@@ -11,6 +11,8 @@ fn capability(name: &str, state: S, detail: &str) -> Capability {
 
 pub fn modules() -> Vec<ModuleInfo> {
     vec![
+        ModuleInfo {id:"platform-reddit".into(),kind:"platform".into(),capabilities:vec![capability("web_login",S::Implemented,"Operator browser session with positive authenticated-page readiness and independent Runtime identity verification. Real-account acceptance pending."),capability("read",S::Implemented,"Signed-in homepage, exact post and bounded comment context through common social tools; lazy image references. No writes.")]},
+        ModuleInfo {id:"platform-discord".into(),kind:"platform".into(),capabilities:vec![capability("web_login",S::Implemented,"Explicit personal website session; credentials stay in Rust/private control pipes. Independent Runtime actor verification. This is not bot/OAuth equivalence; real acceptance pending."),capability("read",S::Implemented,"DM/guild/channel selection and bounded message history with lazy attachments, account-bound references and continuations. No Gateway, sends or guild joins.")]},
         ModuleInfo {
             id: "platform-pixiv".into(), kind: "platform".into(),
             capabilities: vec![

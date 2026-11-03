@@ -20,10 +20,89 @@ use std::{
 const MAX_FRAME: usize = 256 * 1024;
 const POLL: Duration = Duration::from_millis(750);
 
+/// Keep the owned browser alive while the Runtime verifies the captured session.
+/// Dropping this lease closes only that browser and removes its temporary profile.
+pub struct BrowserLease {
+    _browser: Browser,
+}
+pub struct Handoff {
+    secret: Secret,
+    lease: BrowserLease,
+}
+impl Handoff {
+    pub fn into_parts(self) -> (Secret, BrowserLease) {
+        (self.secret, self.lease)
+    }
+}
+
+fn readiness_expression(platform: Platform) -> Result<&'static str> {
+    match platform {
+        Platform::Pixiv => Ok(
+            r#"(()=>{try{const m=document.querySelector('meta[name="global-data"]');const d=m?JSON.parse(m.content):null;const u=d?.userData;return {ready:!!(u&&/^[1-9][0-9]{0,19}$/.test(String(u.id))&&typeof u.name==='string'&&u.name.length)}}catch{return {ready:false}}})()"#,
+        ),
+        Platform::Bilibili => Ok(
+            r#"(async()=>{try{const r=await fetch('https://api.bilibili.com/x/web-interface/nav',{credentials:'include',signal:AbortSignal.timeout(2500)});const j=await r.json();return {ready:r.ok&&j.code===0&&j.data?.isLogin===true&&Number(j.data.mid)>0}}catch{return {ready:false}}})()"#,
+        ),
+        Platform::Tieba => Ok(
+            r#"(async()=>{try{const r=await fetch('/f/user/json_userinfo',{credentials:'include',signal:AbortSignal.timeout(2500)});const j=await r.json();return {ready:r.ok&&j.no===0&&/^[1-9][0-9]*$/.test(String(j.data?.user_id))&&!!j.data?.user_name}}catch{return {ready:false}}})()"#,
+        ),
+        Platform::X => Ok(
+            r#"(()=>({ready:!!document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]')&&!!document.querySelector('a[data-testid="AppTabBar_Profile_Link"]')}))()"#,
+        ),
+        Platform::Reddit => Ok(
+            r#"(async()=>{try{const r=await fetch('/api/me.json?raw_json=1',{credentials:'include',signal:AbortSignal.timeout(2500)});const j=await r.json();const u=j.data||j;return {ready:r.ok&&typeof u.id==='string'&&!!u.id&&typeof u.name==='string'&&!!u.name}}catch{return {ready:false}}})()"#,
+        ),
+        _ => Err("browser_platform_unsupported".into()),
+    }
+}
+fn ready(
+    browser: &mut Browser,
+    platform: Platform,
+    session: &str,
+    deadline: Instant,
+    cancel: &AtomicBool,
+) -> Result<bool> {
+    let expression = if platform == Platform::Discord {
+        let Some(token) = browser.cdp.discord_token.as_ref() else {
+            return Ok(false);
+        };
+        format!(
+            r#"(async()=>{{try{{const r=await fetch('/api/v10/users/@me',{{headers:{{Authorization:{}}},signal:AbortSignal.timeout(2500)}});const u=await r.json();return {{ready:r.ok&&/^[1-9][0-9]*$/.test(u.id)&&typeof u.username==='string'&&!u.bot}}}}catch{{return {{ready:false}}}}}})()"#,
+            serde_json::to_string(token).map_err(|_| "browser_pipe_protocol")?
+        )
+    } else {
+        readiness_expression(platform)?.into()
+    };
+    match browser.cdp.call(
+        "Runtime.evaluate",
+        json!({"expression":expression,"returnByValue":true,"awaitPromise":true}),
+        Some(session),
+        deadline,
+        cancel,
+    ) {
+        Ok(value) => Ok(value.pointer("/result/value/ready") == Some(&Value::Bool(true))),
+        // Navigating during sign-in destroys execution contexts. A probe's
+        // timeout is not the overall human login deadline.
+        Err(e)
+            if !cancel.load(Ordering::Relaxed)
+                && Instant::now() < deadline
+                && matches!(e.as_str(), "browser_pipe_protocol" | "operator_timeout") =>
+        {
+            Ok(false)
+        }
+        Err(e) => Err(e),
+    }
+}
+
 pub fn supported(platform: Platform) -> bool {
     matches!(
         platform,
-        Platform::Bilibili | Platform::Tieba | Platform::X | Platform::Pixiv
+        Platform::Bilibili
+            | Platform::Tieba
+            | Platform::X
+            | Platform::Pixiv
+            | Platform::Reddit
+            | Platform::Discord
     )
 }
 fn root(platform: Platform) -> Result<&'static str> {
@@ -32,12 +111,16 @@ fn root(platform: Platform) -> Result<&'static str> {
         Platform::Tieba => Ok("https://tieba.baidu.com/"),
         Platform::X => Ok("https://x.com/"),
         Platform::Pixiv => Ok("https://www.pixiv.net/"),
+        Platform::Reddit => Ok("https://www.reddit.com/"),
+        Platform::Discord => Ok("https://discord.com/"),
         _ => Err("browser_platform_unsupported".into()),
     }
 }
 fn login_url(platform: Platform) -> Result<&'static str> {
     match platform {
         Platform::X => Ok("https://x.com/i/flow/login"),
+        Platform::Reddit => Ok("https://www.reddit.com/login/"),
+        Platform::Discord => Ok("https://discord.com/login"),
         _ => root(platform),
     }
 }
@@ -54,6 +137,12 @@ fn landing(platform: Platform, url: &str) -> bool {
         Platform::Bilibili => !path.starts_with("account") && !path.starts_with("login"),
         Platform::Tieba => !path.starts_with("login"),
         Platform::Pixiv => !path.starts_with("login"),
+        Platform::Reddit => {
+            !path.starts_with("login")
+                && !path.starts_with("register")
+                && !path.starts_with("account/")
+        }
+        Platform::Discord => path.starts_with("channels/"),
         _ => false,
     }
 }
@@ -72,6 +161,7 @@ fn session(platform: Platform, cookies: &Value) -> Result<Option<Secret>> {
         ],
         Platform::Tieba => &["BDUSS", "BDUSS_BFESS", "STOKEN"],
         Platform::Pixiv => &["PHPSESSID"],
+        Platform::Reddit => &["reddit_session", "token_v2", "csrf_token"],
         _ => return Err("browser_platform_unsupported".into()),
     };
     let mut values = BTreeMap::new();
@@ -96,6 +186,7 @@ fn session(platform: Platform, cookies: &Value) -> Result<Option<Secret>> {
             Platform::Bilibili => matches!(domain, "bilibili.com" | "www.bilibili.com"),
             Platform::Tieba => matches!(domain, "baidu.com" | "tieba.baidu.com"),
             Platform::Pixiv => matches!(domain, "pixiv.net" | "www.pixiv.net"),
+            Platform::Reddit => matches!(domain, "reddit.com" | "www.reddit.com"),
             _ => false,
         };
         if !allowed {
@@ -118,9 +209,16 @@ fn session(platform: Platform, cookies: &Value) -> Result<Option<Secret>> {
         Platform::Bilibili => &["SESSDATA", "bili_jct"],
         Platform::Tieba => &["BDUSS"],
         Platform::Pixiv => &["PHPSESSID"],
+        Platform::Reddit => &[],
         _ => unreachable!(),
     };
     if required.iter().any(|k| !values.contains_key(k)) {
+        return Ok(None);
+    }
+    if platform == Platform::Reddit
+        && !values.contains_key("reddit_session")
+        && !values.contains_key("token_v2")
+    {
         return Ok(None);
     }
     if platform == Platform::X {
@@ -166,6 +264,7 @@ struct Cdp {
     pipe: UnixStream,
     buffer: Vec<u8>,
     id: u64,
+    discord_token: Option<String>,
 }
 impl Cdp {
     fn new(pipe: UnixStream) -> Result<Self> {
@@ -177,6 +276,7 @@ impl Cdp {
             pipe,
             buffer: Vec::new(),
             id: 0,
+            discord_token: None,
         })
     }
     fn frame(&mut self, deadline: Instant, cancel: &AtomicBool) -> Result<Value> {
@@ -214,14 +314,7 @@ impl Cdp {
             }
         }
     }
-    fn call(
-        &mut self,
-        method: &str,
-        params: Value,
-        session: Option<&str>,
-        deadline: Instant,
-        cancel: &AtomicBool,
-    ) -> Result<Value> {
+    fn send(&mut self, method: &str, params: Value, session: Option<&str>) -> Result<u64> {
         self.id += 1;
         let mut request = json!({"id":self.id,"method":method,"params":params});
         if let Some(session) = session {
@@ -232,10 +325,22 @@ impl Cdp {
         self.pipe
             .write_all(&bytes)
             .map_err(|_| "browser_pipe_unavailable")?;
+        Ok(self.id)
+    }
+    fn call(
+        &mut self,
+        method: &str,
+        params: Value,
+        session: Option<&str>,
+        deadline: Instant,
+        cancel: &AtomicBool,
+    ) -> Result<Value> {
+        let request_id = self.send(method, params, session)?;
         let deadline = deadline.min(Instant::now() + Duration::from_secs(5));
         for _ in 0..512 {
             let response = self.frame(deadline, cancel)?;
-            if response["id"].as_u64() != Some(self.id) {
+            self.observe(&response)?;
+            if response["id"].as_u64() != Some(request_id) {
                 continue;
             }
             if response.get("error").is_some() {
@@ -247,6 +352,53 @@ impl Cdp {
                 .ok_or("browser_pipe_protocol".into());
         }
         Err("browser_pipe_limit".into())
+    }
+    fn observe(&mut self, event: &Value) -> Result<()> {
+        if event["method"] != "Fetch.requestPaused" {
+            return Ok(());
+        }
+        let p = &event["params"];
+        let url = p["request"]["url"]
+            .as_str()
+            .unwrap_or("")
+            .split('?')
+            .next()
+            .unwrap_or("");
+        if p["request"]["method"] == "GET"
+            && matches!(
+                url,
+                "https://discord.com/api/v9/users/@me" | "https://discord.com/api/v10/users/@me"
+            )
+        {
+            if let Some(token) = p["request"]["headers"]
+                .as_object()
+                .and_then(|h| {
+                    h.iter()
+                        .find(|(k, _)| k.eq_ignore_ascii_case("authorization"))
+                })
+                .and_then(|(_, v)| v.as_str())
+                .filter(|s| {
+                    !s.is_empty()
+                        && s.len() <= 4096
+                        && s.bytes().all(|b| b.is_ascii_graphic())
+                        && !s.starts_with("Bot")
+                })
+            {
+                self.discord_token = Some(token.into());
+            }
+        }
+        let id = p["requestId"]
+            .as_str()
+            .filter(|s| s.len() <= 128)
+            .ok_or("browser_pipe_protocol")?;
+        // Resume the browser's own request immediately. Only this narrow
+        // first-party endpoint is observed; no general network body stream.
+        self.send(
+            "Fetch.continueRequest",
+            json!({"requestId":id}),
+            event["sessionId"].as_str(),
+        )?;
+        Ok(())
     }
 }
 
@@ -352,7 +504,7 @@ pub fn capture(
     deadline: Instant,
     cancel: &AtomicBool,
     mut progress: impl FnMut(&'static str),
-) -> Result<Option<Secret>> {
+) -> Result<Option<Handoff>> {
     if !supported(platform) {
         return Err("browser_platform_unsupported".into());
     }
@@ -379,7 +531,10 @@ pub fn capture(
     match result {
         Ok(secret) => {
             progress("verifying");
-            Ok(Some(secret))
+            Ok(Some(Handoff {
+                secret,
+                lease: BrowserLease { _browser: browser },
+            }))
         }
         Err(error) if error == "operator_cancelled" || error == "browser_closed" => Ok(None),
         Err(error) => Err(error),
@@ -393,6 +548,7 @@ fn collect(
 ) -> Result<Secret> {
     let mut attached: Option<(String, String)> = None;
     let mut candidate: Option<Secret> = None;
+    let mut probe_after = Instant::now();
     loop {
         let targets = browser
             .cdp
@@ -402,8 +558,12 @@ fn collect(
             .filter(|v| v.len() <= 128)
             .ok_or("browser_pipe_protocol")?
             .iter()
+            .rev()
             .find(|t| {
-                t["type"] == "page" && t["url"].as_str().is_some_and(|u| landing(platform, u))
+                t["type"] == "page"
+                    && t["url"]
+                        .as_str()
+                        .is_some_and(|u| root(platform).is_ok_and(|root| u.starts_with(root)))
             });
         if let Some(id) = target
             .and_then(|t| t["targetId"].as_str())
@@ -430,17 +590,74 @@ fn collect(
                     .as_str()
                     .filter(|s| !s.is_empty() && s.len() <= 128)
                     .ok_or("browser_pipe_protocol")?;
+                if platform == Platform::Discord {
+                    browser.cdp.call(
+                        "Fetch.enable",
+                        json!({"patterns":[{"urlPattern":"https://discord.com/api/*/users/@me*","requestStage":"Request"}]}),
+                        Some(session),
+                        deadline,
+                        cancel,
+                    )?;
+                }
                 attached = Some((id.into(), session.into()));
                 candidate = None;
             }
-            let result = browser.cdp.call(
-                "Network.getCookies",
-                json!({"urls":[root(platform)?]}),
-                attached.as_ref().map(|(_, s)| s.as_str()),
-                deadline,
-                cancel,
-            )?;
-            if let Some(secret) = session(platform, &result["cookies"])? {
+            if target
+                .and_then(|t| t["url"].as_str())
+                .is_none_or(|u| !landing(platform, u))
+            {
+                candidate = None;
+                continue_wait(deadline, cancel);
+                continue;
+            }
+            let secret = if platform == Platform::Discord {
+                if browser.cdp.discord_token.is_none() {
+                    if let Ok(storage)=browser.cdp.call("DOMStorage.getDOMStorageItems",json!({"storageId":{"securityOrigin":"https://discord.com","isLocalStorage":true}}),attached.as_ref().map(|(_,s)|s.as_str()),deadline,cancel) {
+                        if let Some(token)=storage["entries"].as_array().and_then(|rows|rows.iter().find(|row|row[0]=="token")).and_then(|row|row[1].as_str()) {
+                            if let Ok(token)=serde_json::from_str::<String>(token) {
+                                if !token.is_empty()&&token.len()<=4096&&token.bytes().all(|b|b.is_ascii_graphic()){browser.cdp.discord_token=Some(token);}
+                            }
+                        }
+                    }
+                }
+                browser
+                    .cdp
+                    .discord_token
+                    .as_ref()
+                    .map(|token| {
+                        Secret::new(
+                            serde_json::to_vec(&json!({"token":token}))
+                                .map_err(|_| "browser_pipe_protocol")?,
+                        )
+                    })
+                    .transpose()?
+            } else {
+                let result = browser.cdp.call(
+                    "Network.getCookies",
+                    json!({"urls":[root(platform)?]}),
+                    attached.as_ref().map(|(_, s)| s.as_str()),
+                    deadline,
+                    cancel,
+                )?;
+                session(platform, &result["cookies"])?
+            };
+            if let Some(secret) = secret {
+                if Instant::now() < probe_after {
+                    continue_wait(deadline, cancel);
+                    continue;
+                }
+                probe_after = Instant::now() + Duration::from_secs(2);
+                if !ready(
+                    browser,
+                    platform,
+                    attached.as_ref().unwrap().1.as_str(),
+                    deadline,
+                    cancel,
+                )? {
+                    candidate = None;
+                    continue_wait(deadline, cancel);
+                    continue;
+                }
                 if candidate
                     .as_ref()
                     .is_some_and(|previous| previous.bytes() == secret.bytes())
@@ -454,10 +671,13 @@ fn collect(
         } else {
             candidate = None;
         }
-        let next = (Instant::now() + POLL).min(deadline);
-        while Instant::now() < next && !cancel.load(Ordering::Relaxed) {
-            std::thread::sleep(Duration::from_millis(50));
-        }
+        continue_wait(deadline, cancel);
+    }
+}
+fn continue_wait(deadline: Instant, cancel: &AtomicBool) {
+    let next = (Instant::now() + POLL).min(deadline);
+    while Instant::now() < next && !cancel.load(Ordering::Relaxed) {
+        std::thread::sleep(Duration::from_millis(50));
     }
 }
 
@@ -467,29 +687,112 @@ mod tests {
     #[test]
     #[ignore = "real browser acceptance; run only in a dedicated network-disabled browser test container"]
     fn real_browser_pipe_fixture() {
-        let executable=std::env::var_os("GLIMLINK_FIXTURE_BROWSER").expect("explicit test browser executable");
-        let profile=Profile::create().unwrap();let path=profile.0.clone();
-        let mut command=Command::new(executable);
-        command.arg(format!("--user-data-dir={}",profile.0.display()))
-            .args(["--headless","--no-sandbox","--disable-dev-shm-usage","--remote-debugging-pipe","--no-first-run","--no-default-browser-check","about:blank"]);
-        let mut browser=Browser::spawn(command,profile).unwrap();
-        let end=Instant::now()+Duration::from_secs(15);let cancel=AtomicBool::new(false);
-        assert!(browser.cdp.call("Browser.getVersion",json!({}),None,end,&cancel).unwrap()["product"].is_string());
-        let target=browser.cdp.call("Target.createTarget",json!({"url":"about:blank"}),None,end,&cancel).unwrap();
-        let attached=browser.cdp.call("Target.attachToTarget",json!({"targetId":target["targetId"],"flatten":true}),None,end,&cancel).unwrap();
-        let sid=attached["sessionId"].as_str().unwrap();
+        let executable =
+            std::env::var_os("GLIMLINK_FIXTURE_BROWSER").expect("explicit test browser executable");
+        let profile = Profile::create().unwrap();
+        let path = profile.0.clone();
+        let mut command = Command::new(executable);
+        command
+            .arg(format!("--user-data-dir={}", profile.0.display()))
+            .args([
+                "--headless",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--remote-debugging-pipe",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "about:blank",
+            ]);
+        let mut browser = Browser::spawn(command, profile).unwrap();
+        let end = Instant::now() + Duration::from_secs(15);
+        let cancel = AtomicBool::new(false);
+        assert!(
+            browser
+                .cdp
+                .call("Browser.getVersion", json!({}), None, end, &cancel)
+                .unwrap()["product"]
+                .is_string()
+        );
+        let target = browser
+            .cdp
+            .call(
+                "Target.createTarget",
+                json!({"url":"about:blank"}),
+                None,
+                end,
+                &cancel,
+            )
+            .unwrap();
+        let attached = browser
+            .cdp
+            .call(
+                "Target.attachToTarget",
+                json!({"targetId":target["targetId"],"flatten":true}),
+                None,
+                end,
+                &cancel,
+            )
+            .unwrap();
+        let sid = attached["sessionId"].as_str().unwrap();
         browser.cdp.call("Network.setCookies",json!({"cookies":[
             {"name":"auth_token","value":"synthetic-private-x","domain":".x.com","path":"/","secure":true,"httpOnly":true},
             {"name":"ct0","value":"synthetic-csrf","domain":".x.com","path":"/","secure":true},
             {"name":"SID","value":"synthetic-private-google","domain":".google.com","path":"/","secure":true,"httpOnly":true}
         ]}),Some(sid),end,&cancel).unwrap();
-        let result=browser.cdp.call("Network.getCookies",json!({"urls":["https://x.com/"]}),Some(sid),end,&cancel).unwrap();
-        assert_eq!(result["cookies"].as_array().unwrap().len(),2);
-        let secret=session(Platform::X,&result["cookies"]).unwrap().unwrap();
-        assert_eq!(serde_json::from_slice::<Value>(secret.bytes()).unwrap(),json!({"auth_token":"synthetic-private-x","ct0":"synthetic-csrf"}));
-        let pid=browser.child.id();drop(browser);
-        assert!(!path.exists());assert!(!std::path::Path::new(&format!("/proc/{pid}")).exists());
-        println!("{}",json!({"real_browser_pipe":true,"http_only_cookies":true,"scoped_cookie_query":true,"browser_and_profile_cleanup":true,"network":"none","real_account":false,"memory_peak_bytes":fs::read_to_string("/sys/fs/cgroup/memory.peak").ok().and_then(|s|s.trim().parse::<u64>().ok())}));
+        let result = browser
+            .cdp
+            .call(
+                "Network.getCookies",
+                json!({"urls":["https://x.com/"]}),
+                Some(sid),
+                end,
+                &cancel,
+            )
+            .unwrap();
+        assert_eq!(result["cookies"].as_array().unwrap().len(), 2);
+        let secret = session(Platform::X, &result["cookies"]).unwrap().unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Value>(secret.bytes()).unwrap(),
+            json!({"auth_token":"synthetic-private-x","ct0":"synthetic-csrf"})
+        );
+        browser
+            .cdp
+            .call("Page.enable", json!({}), Some(sid), end, &cancel)
+            .unwrap();
+        let tree = browser
+            .cdp
+            .call("Page.getFrameTree", json!({}), Some(sid), end, &cancel)
+            .unwrap();
+        let frame = tree.pointer("/frameTree/frame/id").unwrap();
+        browser.cdp.call("Page.setDocumentContent",json!({"frameId":frame,"html":"<html><head><meta name='global-data' content='{\"userData\":null}'></head><body></body></html>"}),Some(sid),end,&cancel).unwrap();
+        browser.cdp.call("Network.setCookies",json!({"cookies":[{"name":"PHPSESSID","value":"anonymous-session","domain":".pixiv.net","path":"/","secure":true,"httpOnly":true}]}),Some(sid),end,&cancel).unwrap();
+        let anonymous = browser
+            .cdp
+            .call(
+                "Network.getCookies",
+                json!({"urls":[root(Platform::Pixiv).unwrap()]}),
+                Some(sid),
+                end,
+                &cancel,
+            )
+            .unwrap();
+        assert!(
+            session(Platform::Pixiv, &anonymous["cookies"])
+                .unwrap()
+                .is_some()
+        );
+        assert!(!ready(&mut browser, Platform::Pixiv, sid, end, &cancel).unwrap());
+        browser.cdp.call("Page.setDocumentContent",json!({"frameId":frame,"html":"<html><head><meta name='global-data' content='{\"userData\":{\"id\":\"42\",\"name\":\"Synthetic\"}}'></head><body><button data-testid='SideNav_AccountSwitcher_Button'></button><a data-testid='AppTabBar_Profile_Link'></a></body></html>"}),Some(sid),end,&cancel).unwrap();
+        assert!(ready(&mut browser, Platform::Pixiv, sid, end, &cancel).unwrap());
+        assert!(ready(&mut browser, Platform::X, sid, end, &cancel).unwrap());
+        let pid = browser.child.id();
+        drop(browser);
+        assert!(!path.exists());
+        assert!(!std::path::Path::new(&format!("/proc/{pid}")).exists());
+        println!(
+            "{}",
+            json!({"real_browser_pipe":true,"http_only_cookies":true,"scoped_cookie_query":true,"anonymous_cookie_does_not_finish_login":true,"authenticated_page_required":true,"browser_and_profile_cleanup":true,"network":"none","real_account":false,"memory_peak_bytes":fs::read_to_string("/sys/fs/cgroup/memory.peak").ok().and_then(|s|s.trim().parse::<u64>().ok())})
+        );
     }
     #[test]
     fn browser_handoff_keeps_only_exact_platform_cookies() {
@@ -517,6 +820,56 @@ mod tests {
         );
         let foreign = json!([cookie("BDUSS", "one", "baidu.com.evil")]);
         assert!(session(Platform::Tieba, &foreign).unwrap().is_none());
+    }
+    #[test]
+    fn discord_observation_resumes_requests_without_confusing_rpc_response_ids() {
+        let (a, mut b) = UnixStream::pair().unwrap();
+        let worker = std::thread::spawn(move || {
+            let mut read = Vec::new();
+            let mut byte = [0u8; 1];
+            loop {
+                b.read_exact(&mut byte).unwrap();
+                if byte[0] == 0 {
+                    break;
+                }
+                read.push(byte[0]);
+            }
+            let request: Value = serde_json::from_slice(&read).unwrap();
+            b.write_all(b"{\"method\":\"Fetch.requestPaused\",\"sessionId\":\"owned-session\",\"params\":{\"requestId\":\"paused-own-profile\",\"request\":{\"method\":\"GET\",\"url\":\"https://discord.com/api/v10/users/@me\",\"headers\":{\"Authorization\":\"synthetic-user-session\"}}}}\0").unwrap();
+            read.clear();
+            loop {
+                b.read_exact(&mut byte).unwrap();
+                if byte[0] == 0 {
+                    break;
+                }
+                read.push(byte[0]);
+            }
+            let continued: Value = serde_json::from_slice(&read).unwrap();
+            assert_eq!(continued["method"], "Fetch.continueRequest");
+            assert_eq!(continued["params"]["requestId"], "paused-own-profile");
+            assert_eq!(continued["sessionId"], "owned-session");
+            for response in [
+                json!({"id":continued["id"],"result":{}}),
+                json!({"id":request["id"],"result":{"targetInfos":[]}}),
+            ] {
+                b.write_all(&serde_json::to_vec(&response).unwrap())
+                    .unwrap();
+                b.write_all(&[0]).unwrap();
+            }
+        });
+        let mut cdp = Cdp::new(a).unwrap();
+        let result = cdp
+            .call(
+                "Target.getTargets",
+                json!({}),
+                None,
+                Instant::now() + Duration::from_secs(2),
+                &AtomicBool::new(false),
+            )
+            .unwrap();
+        assert_eq!(result, json!({"targetInfos":[]}));
+        assert_eq!(cdp.discord_token.as_deref(), Some("synthetic-user-session"));
+        worker.join().unwrap();
     }
     #[test]
     fn login_and_sso_pages_cannot_finish_handoff() {
@@ -591,7 +944,15 @@ mod tests {
             json!({"auth_token":"synthetic-private-x","ct0":"synthetic-csrf"})
         );
         let pid = browser.child.id();
-        drop(browser);
+        let handoff = Handoff {
+            secret,
+            lease: BrowserLease { _browser: browser },
+        };
+        let (secret, lease) = handoff.into_parts();
+        assert!(std::path::Path::new(&format!("/proc/{pid}")).exists());
+        drop(secret);
+        assert!(std::path::Path::new(&format!("/proc/{pid}")).exists());
+        drop(lease);
         assert!(!path.exists());
         assert!(!std::path::Path::new(&format!("/proc/{pid}")).exists());
     }
@@ -633,6 +994,43 @@ mod tests {
         assert!(!std::path::Path::new(&format!("/proc/{pid}")).exists());
     }
     #[test]
+    fn anonymous_pixiv_cookie_does_not_finish_before_the_user_signs_in() {
+        let profile = Profile::create().unwrap();
+        let path = profile.0.clone();
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command
+            .args([
+                "--exact",
+                "browser_login::tests::pipe_child_fixture",
+                "--ignored",
+                "--nocapture",
+            ])
+            .env("GLIMLINK_PIPE_FIXTURE", "anonymous_pixiv");
+        let mut browser = Browser::spawn(command, profile).unwrap();
+        let cancel = std::sync::Arc::new(AtomicBool::new(false));
+        let other = cancel.clone();
+        let signal = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(2400));
+            other.store(true, Ordering::Relaxed);
+        });
+        let start = Instant::now();
+        assert_eq!(
+            collect(
+                &mut browser,
+                Platform::Pixiv,
+                start + Duration::from_secs(8),
+                &cancel
+            )
+            .err()
+            .unwrap(),
+            "operator_cancelled"
+        );
+        assert!(start.elapsed() >= Duration::from_secs(2));
+        drop(browser);
+        signal.join().unwrap();
+        assert!(!path.exists());
+    }
+    #[test]
     #[ignore = "child-process protocol fixture; invoked only by browser lifecycle tests"]
     fn pipe_child_fixture() {
         use std::os::fd::FromRawFd;
@@ -654,13 +1052,25 @@ mod tests {
             let request: Value = serde_json::from_slice(&bytes).unwrap();
             let result = match request["method"].as_str().unwrap() {
                 "Target.getTargets" => {
-                    json!({"targetInfos":[{"type":"page","targetId":"synthetic","url":"https://x.com/home"}]})
+                    json!({"targetInfos":[{"type":"page","targetId":"synthetic","url":if mode=="anonymous_pixiv"{"https://www.pixiv.net/"}else{"https://x.com/home"}}]})
                 }
                 "Target.attachToTarget" => json!({"sessionId":"synthetic-session"}),
+                "Runtime.evaluate" => {
+                    json!({"result":{"type":"object","value":{"ready":mode=="complete"}}})
+                }
                 "Network.getCookies" => {
-                    assert_eq!(request["params"]["urls"], json!(["https://x.com/"]));
+                    assert_eq!(
+                        request["params"]["urls"],
+                        if mode == "anonymous_pixiv" {
+                            json!(["https://www.pixiv.net/"])
+                        } else {
+                            json!(["https://x.com/"])
+                        }
+                    );
                     assert_eq!(request["sessionId"], "synthetic-session");
-                    if mode == "waiting" {
+                    if mode == "anonymous_pixiv" {
+                        json!({"cookies":[{"name":"PHPSESSID","value":"anonymous-browser-session","domain":".pixiv.net","path":"/","secure":true,"httpOnly":true}]})
+                    } else if mode == "waiting" {
                         json!({"cookies":[]})
                     } else {
                         json!({"cookies":[{"name":"auth_token","value":"synthetic-private-x","domain":".x.com","path":"/","secure":true,"httpOnly":true},{"name":"ct0","value":"synthetic-csrf","domain":".x.com","path":"/","secure":true}]})

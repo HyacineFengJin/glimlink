@@ -111,6 +111,7 @@ impl Runtime {
             "github" => self.github_operator_reuse(),
             "x" => self.x_operator_reuse(),
             "pixiv" => self.pixiv_operator_reuse(),
+            "reddit"|"discord" => self.web_operator_reuse(platform),
             _ => Err("unsupported saved login platform".into()),
         }
     }

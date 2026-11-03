@@ -26,6 +26,8 @@ use the operating system's WebView for human login.
 | Bilibili / Tieba | Content, discussions, notifications and selected interactions |
 | GitHub | Repositories, issues, pull requests and collaboration tools |
 | X | Read-only profiles, posts, timelines and lazy media |
+| pixiv | Read-only recommendations, artwork and lazy images; experimental |
+| Reddit / Discord | Browser login and basic read tools; real-account acceptance pending |
 | QQ | Rust chat/media implementation; current real-account login is blocked |
 | Weixin | Paused and excluded from the default build |
 

@@ -266,7 +266,8 @@
         "docs/**",
         "crates/runtime-control/src/**",
         "crates/runtime-operator/src/**",
-        "crates/platform-pixiv/src/**"
+        "crates/platform-pixiv/src/**",
+        "crates/platform-web/src/**"
       ],
       "classification": "original",
       "license": "MIT",

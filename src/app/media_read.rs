@@ -625,6 +625,8 @@ impl Runtime {
         for (platform, kind, method) in [
             (Platform::X, "task-x-media", "x.media"),
             (Platform::Pixiv, "task-pixiv-media", "pixiv.media"),
+            (Platform::Reddit,"task-reddit-media","reddit.media"),
+            (Platform::Discord,"task-discord-media","discord.media"),
             (Platform::Bilibili, "bilibili-media", "bilibili.media"),
             (
                 Platform::Bilibili,

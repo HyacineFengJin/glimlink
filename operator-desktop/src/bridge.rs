@@ -439,7 +439,7 @@ fn start_login(
     let worker_expected = expected.clone();
     let worker = thread::Builder::new().name("operator-desktop-login".into()).spawn(move || {
         let native = ClientUi::new(&options);
-        let mut ui = DesktopUi { app, id: worker_id, platform, native, cancel: worker_cancel, expected: worker_expected, receiver, initial: secret, authorization_seen: None };
+        let mut ui = DesktopUi { app, id: worker_id, platform, native, cancel: worker_cancel, expected: worker_expected, receiver, initial: secret, authorization_seen: None, browser_lease:None };
         ui.event_data("progress", json!({"status":"checking","message":"正在核实已有登录态。"}));
         let outcome = runtime_operator::login::run_with_ui(options, &mut ui);
         ui.close();
@@ -709,6 +709,7 @@ fn safe_result(result: LoginResult) -> Value {
     value
 }
 struct DesktopUi {
+    browser_lease:Option<runtime_operator::browser_login::BrowserLease>,
     app: AppHandle,
     id: String,
     platform: Platform,
@@ -831,14 +832,15 @@ impl Human for DesktopUi {
         if required.kind == SecretInputKind::BrowserSession {
             let platform = self.platform;
             let cancel = self.cancel.clone();
-            return runtime_operator::browser_login::capture(platform, deadline, &cancel, |status| {
+            let handoff=runtime_operator::browser_login::capture(platform, deadline, &cancel, |status| {
                 let message = match status {
                     "opening" => "正在打开本机浏览器登录窗口…",
                     "waiting" => "请在浏览器里登录。完成后自动交接给 Runtime，无需复制登录信息。",
                     _ => "浏览器登录信息已交回，正在由 Runtime 核验账号…",
                 };
                 self.event_data("progress", json!({"status":"verification_required","message":message,"browser_session":true}));
-            });
+            })?;
+            return Ok(handoff.map(|handoff|{let (secret,lease)=handoff.into_parts();self.browser_lease=Some(lease);secret}));
         }
         if self.platform == Platform::Github && required.kind == SecretInputKind::Token {
             // Explicit token import remains optional alongside project OAuth.
@@ -880,6 +882,7 @@ impl Human for DesktopUi {
         }
     }
     fn close(&mut self) {
+        self.browser_lease=None;
         self.native.close();
         if let Ok(mut expected) = self.expected.lock() {
             *expected = None;

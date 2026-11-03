@@ -15,7 +15,7 @@
   q('[data-cookie-mode=header]').click();assert(!q('#cookie-header-guide').hidden&&q('#cookie-pair-guide').hidden,'advanced header has its own explanation');results.external_sso_and_advanced_help_have_visible_feedback=true;
   window.GlimlinkI18n.set('en');await tick();assert(q('#input-title').textContent==='Connect an X account'&&q('#cookie-header-guide').textContent.includes('What is a Cookie header?'),'guide switches to English');window.GlimlinkI18n.set('zh-CN');await tick();assert(q('#input-submit-label').textContent==='验证并连接','guide restores Chinese');results.guide_is_bilingual=true;
   event('finished',{status:'cancelled'});q('[data-platform=github] .login-button').click();await tick();assert(window.__calls.filter(c=>c.command==='begin_login').at(-1).args.method==='auto','GitHub main path uses default application and reuse');
-  window.__loginHandler({payload:{login_id:'synthetic-'+window.__job,platform:'github',kind:'finished',data:{status:'cancelled'}}});q('[data-platform=github] .x-refresh-login').click();await tick();assert(window.__calls.filter(c=>c.command==='begin_login').at(-1).args.method==='token','token import remains optional');results.github_default_and_manual_fallback_are_explicit=true;
+  window.__loginHandler({payload:{login_id:'synthetic-'+window.__job,platform:'github',kind:'finished',data:{status:'cancelled'}}});assert(!q('[data-platform=github] .x-refresh-login'),'advanced token input is absent from normal cards');results.github_uses_default_authorization_without_extra_links=true;
  }catch(e){results.error=e.message}
  document.body.replaceChildren(Object.assign(document.createElement('pre'),{id:'verification-result',textContent:JSON.stringify(results)}));
 })();

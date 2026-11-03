@@ -75,7 +75,7 @@ pub(crate) fn execute_legacy(
             platform => {
                 let mut value = runtime.call(&format!("{}.status", platform.name()), &json!({}))?;
                 if value["status"] == "saved_session"
-                    && matches!(platform, Platform::Bilibili | Platform::Tieba | Platform::X | Platform::Pixiv)
+                    && matches!(platform, Platform::Bilibili | Platform::Tieba | Platform::X | Platform::Pixiv | Platform::Reddit | Platform::Discord)
                 {
                     if let Ok(details) =
                         runtime.call(&format!("{}.me", platform.name()), &json!({}))
@@ -97,6 +97,7 @@ pub(crate) fn execute_legacy(
             Platform::Github => runtime.github_login(path()?)?,
             Platform::X => runtime.x_import_login(path()?)?,
             Platform::Pixiv => runtime.pixiv_import_login(path()?)?,
+            Platform::Reddit|Platform::Discord => runtime.web_import_login(request.platform.name(),path()?)?,
             _ => return Err("unsupported login import".into()),
         },
         Action::PasswordLogin | Action::PasswordResume => {
@@ -144,6 +145,7 @@ pub(crate) fn execute_legacy(
             Platform::Qq => runtime.qq_login()?,
             Platform::X => runtime.x_operator_reuse()?,
             Platform::Pixiv => runtime.pixiv_operator_reuse()?,
+            Platform::Reddit|Platform::Discord=>runtime.web_operator_reuse(request.platform.name())?,
             _ => return Err("unsupported saved login platform".into()),
         },
         _ => return Err("unsupported compatibility control action".into()),
@@ -159,6 +161,18 @@ pub(crate) fn execute_legacy(
 }
 
 fn public_failure(id: u64, error: &str) -> Frame {
+    if let Some((site,code))=error.strip_prefix("web-request:").and_then(|s|s.split_once(':')) {
+        if matches!(site,"reddit"|"discord") {
+            let (code,message)=match code {
+                "needs_auth"=>("needs_auth","The website did not accept this session. Sign in again in the operator browser."),
+                "permission_denied"=>("permission_denied","The website denied this Runtime request. Browser sign-in did not grant access to this connection or resource."),
+                "rate_limited"=>("rate_limited","The website limited this request. No automatic retry or new login was started."),
+                "protocol_changed"=>("protocol_changed","The website response could not be recognized. Existing account credentials were retained."),
+                _=>("website_request_failed","The website request did not complete. Existing account credentials were retained."),
+            };
+            return Frame::failure(id,code,message);
+        }
+    }
     if let Some(code) = error.strip_prefix("pixiv-request:") {
         let (code,message) = match code {
             "needs_auth" => ("needs_auth","Pixiv did not accept this web session. The previous saved account was retained."),

@@ -366,7 +366,15 @@ impl LoginController {
         // expiry. The adapter only returns needs_auth for explicit expiry.
         // A person may explicitly refresh the same alias's X web session.
         // Auto never turns a denied/rate-limited request into a fresh login.
-        let explicit_refresh = matches!(request.platform, Platform::X | Platform::Bilibili | Platform::Tieba | Platform::Pixiv) && requested == LoginMethod::Browser
+        let explicit_refresh = matches!(
+            request.platform,
+            Platform::X
+                | Platform::Bilibili
+                | Platform::Tieba
+                | Platform::Pixiv
+                | Platform::Reddit
+                | Platform::Discord
+        ) && requested == LoginMethod::Browser
             || request.platform == Platform::Github
                 && matches!(requested, LoginMethod::Device | LoginMethod::Token);
         if !explicit_refresh {
@@ -415,8 +423,22 @@ impl LoginController {
             flow.update(result)?;
             return self.retain(flow);
         }
-        let input_kind = if matches!(request.platform, Platform::X | Platform::Bilibili | Platform::Tieba | Platform::Pixiv) && method == LoginMethod::Browser {
-            if request.account == "public" { return encode(failed("account_required", "Choose a personal account alias before browser sign-in.")); }
+        let input_kind = if matches!(
+            request.platform,
+            Platform::X
+                | Platform::Bilibili
+                | Platform::Tieba
+                | Platform::Pixiv
+                | Platform::Reddit
+                | Platform::Discord
+        ) && method == LoginMethod::Browser
+        {
+            if request.account == "public" {
+                return encode(failed(
+                    "account_required",
+                    "Choose a personal account alias before browser sign-in.",
+                ));
+            }
             Some(SecretInputKind::BrowserSession)
         } else if request.platform == Platform::Github {
             Some(SecretInputKind::Token)
@@ -487,6 +509,9 @@ impl LoginController {
         } else if flow.platform == Platform::Pixiv {
             let input = PrivateInput::create(runtime.state_dir(), bytes)?;
             runtime.pixiv_import_login(&input.path)?
+        } else if matches!(flow.platform, Platform::Reddit | Platform::Discord) {
+            let input = PrivateInput::create(runtime.state_dir(), bytes)?;
+            runtime.web_import_login(flow.platform.name(), &input.path)?
         } else {
             let bytes = password_input(bytes, flow.profile.as_deref())?;
             let input = PrivateInput::create(runtime.state_dir(), &bytes)?;
@@ -559,7 +584,15 @@ impl LoginController {
                     (flow.platform, *kind),
                     (Platform::Github, SecretInputKind::Token)
                         | (Platform::X, SecretInputKind::Cookies)
-                        | (Platform::X | Platform::Bilibili | Platform::Tieba | Platform::Pixiv, SecretInputKind::BrowserSession)
+                        | (
+                            Platform::X
+                                | Platform::Bilibili
+                                | Platform::Tieba
+                                | Platform::Pixiv
+                                | Platform::Reddit
+                                | Platform::Discord,
+                            SecretInputKind::BrowserSession
+                        )
                         | (Platform::Qq, SecretInputKind::Password)
                 ) {
                     return Err("private input does not match the active platform login".into());
@@ -832,6 +865,7 @@ fn capabilities(platform: Platform) -> LoginCapabilities {
         Platform::Github => (vec![LoginMethod::Device, LoginMethod::Token], true, true, Some(LoginMethod::Device), false, Some("Authorize the project-provided Glimlink application in your system browser. Existing accounts are reused; private token import remains optional.".into())),
         Platform::X => (vec![LoginMethod::Auto, LoginMethod::Browser], true, true, Some(LoginMethod::Browser), false, Some("Reuse the saved X web session first. Otherwise, sign in using an installed browser on the operator. Only the platform session crosses the private control channel; Runtime independently verifies it before saving.".into())),
         Platform::Pixiv => (vec![LoginMethod::Browser], true, true, Some(LoginMethod::Browser), false, Some("Sign in through a real browser on the operator. Runtime verifies the authenticated Pixiv user before saving the web session. Read-only website adapter; no mobile OAuth app impersonation.".into())),
+        Platform::Reddit|Platform::Discord => (vec![LoginMethod::Browser],true,true,Some(LoginMethod::Browser),false,Some("Sign in through the operator browser. An authenticated page is required before private session handoff; Runtime independently verifies the actor before saving. Experimental read-only website adapter.".into())),
         Platform::Codex => (vec![LoginMethod::Device], true, false, Some(LoginMethod::Device), false, Some("Native subscription login; one dedicated credential home per engine in this Runtime.".into())),
         Platform::Antigravity => (vec![LoginMethod::Browser], true, false, Some(LoginMethod::Browser), false, Some("Native Google subscription login; the browser and one-time code input run on the operator client.".into())),
         Platform::Weixin => (vec![], false, false, None, true, Some("Personal WeChat login/account testing is paused.".into())),
@@ -1037,29 +1071,37 @@ mod tests {
         assert!(control.runtime.is_none());
     }
     #[test]
-    fn explicit_x_refresh_requests_private_input_without_touching_saved_state() {
-        let path = state("x-explicit-refresh");
-        let dir = crate::private_state::account_directory(&path, "x", "owner").unwrap();
-        let saved = dir.join("session.json");
-        let retained = b"synthetic-saved-state-that-must-not-be-read-or-replaced";
-        std::fs::write(&saved, retained).unwrap();
-        let mut control = LoginController::new(&path).unwrap();
-        let mut start = Request::new(1, Platform::X, "owner".into(), Action::Login);
-        start.params = json!({"method":"browser"});
-        let first = control.execute(&start, &mut |_, _| Ok(())).unwrap();
-        assert_eq!(first["status"], "verification_required");
-        assert_eq!(first["method"], "browser");
-        assert_eq!(first["input_required"]["kind"], "browser_session");
-        assert!(control.runtime.is_none());
-        start.action = Action::CancelLogin;
-        start.params = json!({"login_id":first["login_id"]});
-        assert_eq!(
-            control.execute(&start, &mut |_, _| Ok(())).unwrap()["status"],
-            "cancelled"
-        );
-        drop(control);
-        assert_eq!(std::fs::read(saved).unwrap(), retained);
-        std::fs::remove_dir_all(path).unwrap();
+    fn explicit_website_refresh_requests_private_input_without_touching_saved_state() {
+        for platform in [
+            Platform::X,
+            Platform::Pixiv,
+            Platform::Reddit,
+            Platform::Discord,
+        ] {
+            let path = state(&format!("{}-explicit-refresh", platform.name()));
+            let dir =
+                crate::private_state::account_directory(&path, platform.name(), "owner").unwrap();
+            let saved = dir.join("session.json");
+            let retained = b"synthetic-saved-state-that-must-not-be-read-or-replaced";
+            std::fs::write(&saved, retained).unwrap();
+            let mut control = LoginController::new(&path).unwrap();
+            let mut start = Request::new(1, platform, "owner".into(), Action::Login);
+            start.params = json!({"method":"browser"});
+            let first = control.execute(&start, &mut |_, _| Ok(())).unwrap();
+            assert_eq!(first["status"], "verification_required");
+            assert_eq!(first["method"], "browser");
+            assert_eq!(first["input_required"]["kind"], "browser_session");
+            assert!(control.runtime.is_none());
+            start.action = Action::CancelLogin;
+            start.params = json!({"login_id":first["login_id"]});
+            assert_eq!(
+                control.execute(&start, &mut |_, _| Ok(())).unwrap()["status"],
+                "cancelled"
+            );
+            drop(control);
+            assert_eq!(std::fs::read(saved).unwrap(), retained);
+            std::fs::remove_dir_all(path).unwrap();
+        }
     }
     #[test]
     fn token_input_flow_is_bound_to_account_platform_pipe_and_replays_cancel() {

@@ -16,6 +16,8 @@ pub enum Platform {
     Github,
     X,
     Pixiv,
+    Reddit,
+    Discord,
     Local,
 }
 

@@ -3,6 +3,14 @@
 // marked translate=no and are never rewritten or persisted by this module.
 (() => {
   const en = {
+    "重新连接":"Reconnect",
+    "扫码登录 ↗":"Sign in with QR ↗",
+    "尚未完成账号核验，请重新连接。":"Account verification is incomplete. Connect again.",
+    "请先安装 Chrome、Chromium 或 Edge。":"Install Chrome, Chromium or Edge to continue.",
+    "请先停止后台，再连接账号。":"Stop the worker before connecting an account.",
+    "平台暂时限流，请稍后重试。":"The platform is limiting requests. Try again later.",
+    "登录已超时，请重试。":"Sign-in timed out. Try again.",
+    "连接未完成，请重试。":"Connection did not complete. Try again.",
     "浏览器登录，自动连接账号":"Sign in in your browser to connect automatically",
     "插画与漫画":"Illustrations and manga",
     "作品、推荐与按需读图":"Artworks, recommendations and images on demand",
