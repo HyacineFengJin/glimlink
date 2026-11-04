@@ -33,9 +33,12 @@ has passed real-account acceptance; per-account results are recorded in
 3. Open returned content targets directly, or pass `continuation` unchanged to
    `social_discover`. Fetch images/video/audio only when needed.
 
-Pixiv returns `available_topics` from that account's `recommendByTag` sections.
-Pass one as `topic` on a new read of the same recommendation feed. This selects
-a real personalized section, not a search or ranking. Its recommended ID order
+Pixiv returns `topics[].next` for that account's `recommendByTag` sections.
+Call the returned tool arguments to read the selected section from the exact
+same verified homepage snapshot, without another network request. Topic names
+also appear in `available_topics`; a fresh `topic` request refreshes the homepage,
+whose available sections may have changed. This selects a real personalized
+section, not a search or ranking. Its recommended ID order
 is joined to the shared thumbnail pool; unrelated pool entries are excluded.
 Recommendation batches can be paged locally and refreshed; this is explicitly
 different from the platform's stable following-page sequence.

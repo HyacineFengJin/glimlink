@@ -42,10 +42,57 @@ struct FeedSnapshot {
     source: String,
     viewer: String,
     recommendations: platform_pixiv::HomeRecommendations,
+    // Only tag sections and their shared thumbnail index from this exact home
+    // response. Topic links must not refresh the homepage and silently lose
+    // the tag that the caller just selected.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    topic_home: Option<Value>,
     #[serde(default)]
     next_page: Option<u32>,
     #[serde(default)]
     provider_has_more: Option<bool>,
+}
+fn compact_topic_home(raw: &Value, topics: &[String]) -> Result<Option<Value>> {
+    if topics.is_empty() {
+        return Ok(None);
+    }
+    let groups = raw
+        .pointer("/page/recommendByTag")
+        .and_then(Value::as_array)
+        .ok_or("invalid Pixiv topic sections")?;
+    let mut wanted = std::collections::BTreeSet::new();
+    let mut sections = Vec::new();
+    let mut count = 0usize;
+    for group in groups {
+        let ids = group["ids"].as_array().ok_or("invalid Pixiv topic IDs")?;
+        count = count
+            .checked_add(ids.len())
+            .ok_or("Pixiv topic item bound")?;
+        if ids.len() > 512 || count > 4096 {
+            return Err("Pixiv topic item bound".into());
+        }
+        for id in ids {
+            let id = id
+                .as_str()
+                .map(str::to_owned)
+                .or_else(|| id.as_u64().map(|v| v.to_string()))
+                .ok_or("invalid Pixiv topic ID")?;
+            platform_pixiv::id(&id).map_err(err)?;
+            wanted.insert(id);
+        }
+        sections.push(json!({"tag":group["tag"],"ids":ids}));
+    }
+    let rows = raw
+        .pointer("/thumbnails/illust")
+        .and_then(Value::as_array)
+        .ok_or("invalid Pixiv topic index")?;
+    let rows: Vec<&Value> = rows
+        .iter()
+        .filter(|row| row["id"].as_str().is_some_and(|id| wanted.contains(id)))
+        .collect();
+    Ok(Some(
+        json!({"page":{"recommendByTag":sections},"thumbnails":{"illust":rows}}),
+    ))
 }
 fn fetch_feed_snapshot(
     saved: Saved,
@@ -58,13 +105,13 @@ fn fetch_feed_snapshot(
     if client.me().map_err(err)?.id != saved.user.id {
         return Err("Pixiv recommendation viewer differs".into());
     }
-    let (mut recommendations, next_page, provider_has_more) = match source {
-        "recommended" => (
-            platform_pixiv::home_recommendations(&client.home().map_err(err)?, topic)
-                .map_err(err)?,
-            None,
-            None,
-        ),
+    let (mut recommendations, topic_home, next_page, provider_has_more) = match source {
+        "recommended" => {
+            let raw = client.home().map_err(err)?;
+            let recommendations = platform_pixiv::home_recommendations(&raw, topic).map_err(err)?;
+            let topics = compact_topic_home(&raw, &recommendations.available_topics)?;
+            (recommendations, topics, None, None)
+        }
         "following" => {
             let update = client.following(page).map_err(err)?;
             (
@@ -73,6 +120,7 @@ fn fetch_feed_snapshot(
                     available_topics: Vec::new(),
                     topic: None,
                 },
+                None,
                 update.next_page,
                 Some(update.provider_has_more),
             )
@@ -89,6 +137,7 @@ fn fetch_feed_snapshot(
         source: source.into(),
         viewer: saved.user.id,
         recommendations,
+        topic_home,
         next_page,
         provider_has_more,
     })
@@ -437,10 +486,24 @@ impl Runtime {
             if snapshot.schema != 1
                 || snapshot.source != cursor.source
                 || snapshot.viewer != cursor.viewer
-                || snapshot.recommendations.topic != cursor.topic
-                || cursor.offset > snapshot.recommendations.items.len()
             {
                 return Err("Pixiv recommendation snapshot differs".into());
+            }
+            if snapshot.recommendations.topic != cursor.topic {
+                let topic = cursor
+                    .topic
+                    .as_deref()
+                    .ok_or("Pixiv snapshot topic differs")?;
+                let home = snapshot
+                    .topic_home
+                    .as_ref()
+                    .filter(|_| source == "recommended")
+                    .ok_or("Pixiv snapshot has no topic sections")?;
+                snapshot.recommendations =
+                    platform_pixiv::home_recommendations(home, Some(topic)).map_err(err)?;
+            }
+            if cursor.offset > snapshot.recommendations.items.len() {
+                return Err("Pixiv recommendation snapshot offset differs".into());
             }
             if seen.len() >= 512 {
                 snapshot.next_page = None;
@@ -481,6 +544,50 @@ impl Runtime {
             return Err("invalid Pixiv recommendation offset".into());
         }
         let end = offset.saturating_add(limit).min(rows.len());
+        let snapshot_ref =
+            if end < rows.len() || snapshot.next_page.is_some() || snapshot.topic_home.is_some() {
+                Some(match snapshot_ref {
+                    Some(value) => value,
+                    None => {
+                        let bytes = serde_json::to_vec(&snapshot)
+                            .map_err(|_| "cannot encode Pixiv recommendation snapshot")?;
+                        if bytes.len() > 2 * 1024 * 1024 {
+                            return Err("Pixiv recommendation snapshot exceeds item budget".into());
+                        }
+                        self.store
+                            .import(
+                                &scope,
+                                "pixiv-feed",
+                                "application/json",
+                                &mut bytes.as_slice(),
+                            )?
+                            .id
+                    }
+                })
+            } else {
+                None
+            };
+        let mut topics = Vec::new();
+        if snapshot.topic_home.is_some() {
+            for topic in &snapshot.recommendations.available_topics {
+                let reference = self.locators.put_reusable(
+                    &scope,
+                    CURSOR,
+                    &FeedCursor {
+                        source: snapshot.source.clone(),
+                        viewer: snapshot.viewer.clone(),
+                        topic: Some(topic.clone()),
+                        snapshot: snapshot_ref
+                            .as_ref()
+                            .ok_or("Pixiv topic snapshot missing")?
+                            .clone(),
+                        offset: 0,
+                        seen: Vec::new(),
+                    },
+                )?;
+                topics.push(json!({"topic":topic,"next":{"tool":"social_discover","arguments":{"continuation":reference}}}));
+            }
+        }
         let mut items = Vec::new();
         for row in &rows[offset..end] {
             let mut item = platform_pixiv::artwork_view(row).map_err(err)?;
@@ -502,21 +609,6 @@ impl Runtime {
             items.push(item);
         }
         let continuation = if end < rows.len() || snapshot.next_page.is_some() {
-            let snapshot_ref = match snapshot_ref {
-                Some(value) => value,
-                None => {
-                    let bytes = serde_json::to_vec(&snapshot)
-                        .map_err(|_| "cannot encode Pixiv recommendation snapshot")?;
-                    self.store
-                        .import(
-                            &scope,
-                            "pixiv-feed",
-                            "application/json",
-                            &mut bytes.as_slice(),
-                        )?
-                        .id
-                }
-            };
             Some(self.locators.put(
                 &scope,
                 CURSOR,
@@ -524,7 +616,7 @@ impl Runtime {
                     source: snapshot.source.clone(),
                     viewer: snapshot.viewer.clone(),
                     topic: snapshot.recommendations.topic.clone(),
-                    snapshot: snapshot_ref,
+                    snapshot: snapshot_ref.ok_or("Pixiv continuation snapshot missing")?,
                     offset: end,
                     seen,
                 },
@@ -543,7 +635,7 @@ impl Runtime {
             "homepage_batch_end"
         };
         Ok(
-            json!({"status":"ok","scope":scope,"items":items,"has_more":continuation.is_some(),"provider_has_more":snapshot.provider_has_more,"continuation":continuation,"pagination_supported":true,"pagination_kind":if following{"provider_pages_with_cached_tails"}else{"verified_home_snapshot"},"source":if following{"pixiv_following_updates"}else{"pixiv_home_recommendations"},"signed_in_request":true,"viewer_verified":true,"recommendation_kind":if following{"followed_author_updates"}else{"personalized_home"},"cached":cached,"topic":snapshot.recommendations.topic,"available_topics":snapshot.recommendations.available_topics,"feed_mode":"safe","images_fetched":false,"refresh_supported":true,"stop_reason":stop_reason,"pagination_note":"Recommended preserves the account homepage section and optional recommended topic. Following reads a separate followed-author update feed. Continuation binds source, account, viewer and topic, keeps page tails, and deduplicates followed-author pages; omit it to refresh."}),
+            json!({"status":"ok","scope":scope,"items":items,"has_more":continuation.is_some(),"provider_has_more":snapshot.provider_has_more,"continuation":continuation,"pagination_supported":true,"pagination_kind":if following{"provider_pages_with_cached_tails"}else{"verified_home_snapshot"},"source":if following{"pixiv_following_updates"}else{"pixiv_home_recommendations"},"signed_in_request":true,"viewer_verified":true,"recommendation_kind":if following{"followed_author_updates"}else{"personalized_home"},"cached":cached,"topic":snapshot.recommendations.topic,"available_topics":snapshot.recommendations.available_topics,"topics":topics,"feed_mode":"safe","images_fetched":false,"refresh_supported":true,"stop_reason":stop_reason,"pagination_note":"Use topics[].next to read a personalized tag section from this same homepage snapshot, without a fresh network request. Following reads a separate followed-author update feed. Continuation binds source, account, viewer and topic, keeps page tails, and deduplicates followed-author pages; omit it to refresh."}),
         )
     }
 }
@@ -562,7 +654,7 @@ mod tests {
             platform: Platform::Pixiv,
             account: "alice".into(),
         };
-        let snapshot = FeedSnapshot { schema:1,source:"recommended".into(),viewer:"42".into(),next_page:None,provider_has_more:None,recommendations:platform_pixiv::HomeRecommendations {
+        let snapshot = FeedSnapshot { schema:1,source:"recommended".into(),viewer:"42".into(),next_page:None,provider_has_more:None,topic_home:None,recommendations:platform_pixiv::HomeRecommendations {
             items:(1..=3).map(|id|json!({"id":id.to_string(),"title":"Synthetic recommendation","xRestrict":0,"url":"https://i.pximg.net/synthetic.png"})).collect(),available_topics:vec!["space".into()],topic:Some("space".into()),
         }};
         let bytes = serde_json::to_vec(&snapshot).unwrap();
@@ -652,6 +744,7 @@ mod tests {
             viewer: "42".into(),
             next_page: None,
             provider_has_more: Some(false),
+            topic_home: None,
             recommendations: platform_pixiv::HomeRecommendations {
                 items: vec![
                     json!({"id":"4","title":"Synthetic followed author update","xRestrict":0}),
@@ -699,6 +792,115 @@ mod tests {
         assert_eq!(page["recommendation_kind"], "followed_author_updates");
         assert_eq!(page["items"][0]["id"], "4");
         assert!(!state.join("outbox").exists());
+        drop(rt);
+        fs::remove_dir_all(state).unwrap();
+    }
+    #[test]
+    fn personalized_topic_links_keep_the_exact_home_snapshot_without_refetching() {
+        let state =
+            std::env::temp_dir().join(format!("pixiv-stable-topics-{}", std::process::id()));
+        private_dir(&state).unwrap();
+        let directory = account_directory(&state, "pixiv", "alice").unwrap();
+        save_private_new(&directory.join("session.json"), &json!({"schema":1,"user":{"id":"42","name":"Synthetic"},"session":{"phpsessid":"synthetic"}})).unwrap();
+        let raw = json!({"page":{"recommend":{"ids":["1"]},"recommendByTag":[{"tag":"space","ids":[2,"3"]}]},"thumbnails":{"illust":[
+            {"id":"1","title":"Main section","xRestrict":0},
+            {"id":"2","title":"Topic first","xRestrict":0,"url":"https://i.pximg.net/synthetic.png"},
+            {"id":"3","title":"Topic second","xRestrict":0},
+            {"id":"999","title":"Unrelated ranking","xRestrict":0}
+        ]}});
+        let recommendations = platform_pixiv::home_recommendations(&raw, None).unwrap();
+        let topic_home = compact_topic_home(&raw, &recommendations.available_topics).unwrap();
+        assert!(
+            !topic_home
+                .as_ref()
+                .unwrap()
+                .to_string()
+                .contains("Unrelated ranking")
+        );
+        let snapshot = FeedSnapshot {
+            schema: 1,
+            source: "recommended".into(),
+            viewer: "42".into(),
+            recommendations,
+            topic_home,
+            next_page: None,
+            provider_has_more: None,
+        };
+        let mut rt = Runtime::open(&state, "public", None).unwrap();
+        let scope = Scope {
+            platform: Platform::Pixiv,
+            account: "alice".into(),
+        };
+        let bytes = serde_json::to_vec(&snapshot).unwrap();
+        let resource = rt
+            .store
+            .import(
+                &scope,
+                "pixiv-feed",
+                "application/json",
+                &mut bytes.as_slice(),
+            )
+            .unwrap();
+        let reference = rt
+            .locators
+            .put(
+                &scope,
+                CURSOR,
+                &FeedCursor {
+                    source: "recommended".into(),
+                    viewer: "42".into(),
+                    topic: None,
+                    snapshot: resource.id,
+                    offset: 0,
+                    seen: Vec::new(),
+                },
+            )
+            .unwrap();
+        let home = rt
+            .call(
+                "social.discover",
+                &json!({"continuation":reference,"limit":20}),
+            )
+            .unwrap();
+        assert_eq!(home["items"][0]["id"], "1");
+        assert_eq!(home["has_more"], false);
+        assert_eq!(home["topics"][0]["topic"], "space");
+        assert!(!home.to_string().contains("Topic first"));
+        assert!(!home.to_string().contains("i.pximg.net"));
+        let again = rt
+            .call("social.discover", &json!({"continuation":reference}))
+            .unwrap();
+        assert_eq!(again["topics"], home["topics"]);
+        let mut args = home["topics"][0]["next"]["arguments"].clone();
+        args["limit"] = json!(1);
+        // A fake saved session plus network-disabled tests guarantees these
+        // reads cannot accidentally refresh and pick a different home page.
+        let topic = rt.call("social.discover", &args).unwrap();
+        assert_eq!(topic["scope"]["account"], "alice");
+        assert_eq!(topic["cached"], true);
+        assert_eq!(topic["topic"], "space");
+        assert_eq!(topic["items"][0]["id"], "2");
+        let tail = rt
+            .call(
+                "social.discover",
+                &json!({"continuation":topic["continuation"]}),
+            )
+            .unwrap();
+        assert_eq!(tail["items"][0]["id"], "3");
+        assert_eq!(tail["has_more"], false);
+        for extra in [
+            json!({"source":"following"}),
+            json!({"account":"bob"}),
+            json!({"platform":"reddit"}),
+            json!({"topic":"different"}),
+        ] {
+            let mut invalid = args.clone();
+            invalid
+                .as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            assert!(rt.call("social.discover", &invalid).is_err());
+        }
         drop(rt);
         fs::remove_dir_all(state).unwrap();
     }
