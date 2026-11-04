@@ -19,6 +19,24 @@ pub struct DynamicStats {
     pub forward_count: Option<u64>,
     /// Existing viewer state from the response, never an instruction to like.
     pub liked: Option<bool>,
+    /// Original compact display, including a label when the count is unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub like_count_display: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub comment_count_display: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub forward_count_display: Option<String>,
+    /// True only for a normalized compact unit display. A false flag does not
+    /// turn a None/unknown count into an exact count; ordinary numeric zero stays exact.
+    #[serde(default, skip_serializing_if = "not_approximate")]
+    pub like_count_approximate: bool,
+    #[serde(default, skip_serializing_if = "not_approximate")]
+    pub comment_count_approximate: bool,
+    #[serde(default, skip_serializing_if = "not_approximate")]
+    pub forward_count_approximate: bool,
+}
+fn not_approximate(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -130,29 +148,49 @@ impl Client {
     /// The signed-in viewer's Following dynamics, separate from homepage
     /// recommendations and from a selected uploader's public space feed.
     pub fn following_dynamics(&self, offset: Option<&str>, limit: u32) -> Result<Value> {
-        let viewer = self.current_user()?;
         let url = following_url(offset, limit)?;
-        let mut raw = api_data(self.transport.json(&url)?, false)?;
-        let mut omitted = 0usize;
-        if let Some(items) = raw["items"].as_array_mut() {
-            items.retain(|item| {
-                let promoted = item["type"] == "DYNAMIC_TYPE_AD"
-                    || item.pointer("/modules/module_tag/text").and_then(Value::as_str).is_some_and(|s| s.contains("推荐") || s.contains("广告"));
-                if promoted { omitted += 1; }
-                !promoted
-            });
-        }
-        let mut page = serde_json::to_value(parse_feed(raw, viewer.mid, offset, limit)?)
-            .map_err(|_| Error::InvalidJson)?;
-        page.as_object_mut().unwrap().remove("owner_mid");
-        page["viewer_mid"] = serde_json::json!(viewer.mid);
-        page["source"] = serde_json::json!("bilibili_following_dynamics");
-        page["recommendation_kind"] = serde_json::json!("following_activity");
-        page["signed_in_request"] = serde_json::json!(true);
-        page["viewer_verified"] = serde_json::json!(true);
-        page["omitted_promoted_items"] = serde_json::json!(omitted);
-        Ok(page)
+        let viewer = self.current_user()?;
+        following_page(
+            api_data(self.transport.json(&url)?, false)?,
+            viewer.mid,
+            offset,
+        )
     }
+}
+
+fn following_page(mut raw: Value, viewer: u64, offset: Option<&str>) -> Result<Value> {
+    valid_mid(viewer)?;
+    // This endpoint chooses its own page size. Preserve the complete bounded
+    // provider page; Runtime slices and caches its tail before using the offset.
+    // Checking the original list prevents promoted filtering from hiding an
+    // oversized provider response.
+    list(raw.get("items"), 100)?;
+    let mut omitted = 0usize;
+    if let Some(items) = raw["items"].as_array_mut() {
+        items.retain(|item| {
+            let promoted = item["type"] == "DYNAMIC_TYPE_AD"
+                || item
+                    .pointer("/modules/module_tag/text")
+                    .and_then(Value::as_str)
+                    .is_some_and(|s| s.contains("推荐") || s.contains("广告"));
+            if promoted {
+                omitted += 1
+            }
+            !promoted
+        });
+    }
+    let mut page = serde_json::to_value(parse_feed(raw, viewer, offset, 100)?)
+        .map_err(|_| Error::InvalidJson)?;
+    page.as_object_mut()
+        .ok_or(Error::Schema("dynamic feed projection"))?
+        .remove("owner_mid");
+    page["viewer_mid"] = serde_json::json!(viewer);
+    page["source"] = serde_json::json!("bilibili_following_dynamics");
+    page["recommendation_kind"] = serde_json::json!("following_activity");
+    page["signed_in_request"] = serde_json::json!(true);
+    page["viewer_verified"] = serde_json::json!(true);
+    page["omitted_promoted_items"] = serde_json::json!(omitted);
+    Ok(page)
 }
 
 fn following_url(offset: Option<&str>, limit: u32) -> Result<String> {
@@ -511,10 +549,107 @@ fn count(stat: &Value, name: &str) -> Result<Option<u64>> {
     if flag(block, "hidden")? == Some(true) {
         return Ok(None);
     }
+    if !block.is_object() {
+        return Err(Error::Schema("dynamic statistic block"));
+    }
     match block.get("count") {
         Some(v) if v.as_i64().is_some_and(|n| n < 0) => Ok(None),
-        _ => number(block, "count"),
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(value)) => display_count(value, name),
+        Some(value) if value.as_u64().is_some() => Ok(value.as_u64()),
+        Some(Value::Number(value)) => value
+            .as_f64()
+            .filter(|n| {
+                n.is_finite() && *n >= 0.0 && *n <= 9_007_199_254_740_991.0 && n.fract() == 0.0
+            })
+            .map(|n| Some(n as u64))
+            .ok_or(Error::Schema("dynamic statistic count")),
+        _ => Err(Error::Schema("dynamic statistic count")),
     }
+}
+fn count_display_metadata(
+    stat: &Value,
+    name: &str,
+    value: Option<u64>,
+) -> Result<(Option<String>, bool)> {
+    let block = stat.get(name).unwrap_or(&Value::Null);
+    if flag(block, "hidden")? == Some(true) {
+        return Ok((None, false));
+    }
+    let display = block["count"].as_str().map(str::to_owned);
+    let approximate = value.is_some()
+        && display.as_deref().is_some_and(|text| {
+            matches!(
+                text.trim().chars().last(),
+                Some('万' | '亿' | '千' | 'w' | 'W' | 'k' | 'K' | 'm' | 'M')
+            )
+        });
+    Ok((display, approximate))
+}
+fn display_count(value: &str, name: &str) -> Result<Option<u64>> {
+    if value.len() > 64 || value.chars().any(char::is_control) {
+        return Err(Error::Schema("dynamic statistic count"));
+    }
+    let value = value.trim();
+    let action_label = match name {
+        "like" => matches!(value, "点赞" | "赞"),
+        "comment" => value == "评论",
+        "forward" => value == "转发",
+        _ => false,
+    };
+    // An action label or redacted display is not proof of an exact zero.
+    if action_label
+        || matches!(value, "" | "--" | "—" | "-")
+        || value
+            .strip_prefix('-')
+            .is_some_and(|s| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()))
+    {
+        return Ok(None);
+    }
+    let (mantissa, multiplier) = match value.chars().last() {
+        Some(unit @ ('万' | 'w' | 'W')) => (&value[..value.len() - unit.len_utf8()], 10_000u128),
+        Some('亿') => (&value[..value.len() - '亿'.len_utf8()], 100_000_000),
+        Some(unit @ ('千' | 'k' | 'K')) => (&value[..value.len() - unit.len_utf8()], 1_000),
+        Some('m' | 'M') => (&value[..value.len() - 1], 1_000_000),
+        _ => (value, 1),
+    };
+    let mantissa = mantissa.trim();
+    let (whole, fraction) = mantissa
+        .split_once('.')
+        .map(|(a, b)| (a, Some(b)))
+        .unwrap_or((mantissa, None));
+    let parts: Vec<_> = whole.split(',').collect();
+    if parts.len() > 1
+        && (parts[0].is_empty() || parts[0].len() > 3 || parts.iter().skip(1).any(|s| s.len() != 3))
+    {
+        return Err(Error::Schema("dynamic statistic count"));
+    }
+    let whole = parts.concat();
+    if whole.is_empty() || !whole.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(Error::Schema("dynamic statistic count"));
+    }
+    let fraction = fraction.unwrap_or("");
+    if mantissa.contains('.')
+        && (fraction.is_empty()
+            || fraction.len() > 8
+            || !fraction.bytes().all(|b| b.is_ascii_digit()))
+    {
+        return Err(Error::Schema("dynamic statistic count"));
+    }
+    let digits = format!("{whole}{fraction}");
+    let numerator = digits
+        .parse::<u128>()
+        .ok()
+        .and_then(|n| n.checked_mul(multiplier))
+        .ok_or(Error::Schema("dynamic statistic count"))?;
+    let denominator = 10u128.pow(fraction.len() as u32);
+    if numerator % denominator != 0 {
+        return Err(Error::Schema("dynamic statistic count"));
+    }
+    Ok(Some(
+        u64::try_from(numerator / denominator)
+            .map_err(|_| Error::Schema("dynamic statistic count"))?,
+    ))
 }
 fn original_reference(raw: &Value) -> Result<Option<DynamicOriginalReference>> {
     match dynamic_id(raw) {
@@ -589,10 +724,25 @@ pub(crate) fn parse_item(raw: &Value, depth: u8) -> Result<DynamicItem> {
         orig_unexpanded = true;
     }
     let basic = raw.get("basic").unwrap_or(&Value::Null);
-    let comment_oid = number(basic, "comment_id_str")?.filter(|n| *n > 0);
+    // An unavailable original can explicitly leave this optional interaction
+    // target empty. Do not invent ID zero or relax uploader/author identities.
+    let comment_oid = if basic.get("comment_id_str").and_then(Value::as_str) == Some("") {
+        None
+    } else {
+        number(basic, "comment_id_str")?.filter(|n| *n > 0)
+    };
     let comment_type = number32(basic, "comment_type")?;
     let pinned = flag(author, "is_top")?.unwrap_or(false)
         || modules.pointer("/module_tag/text").and_then(Value::as_str) == Some("置顶");
+    let like_count = count(stat, "like")?;
+    let comment_count = count(stat, "comment")?;
+    let forward_count = count(stat, "forward")?;
+    let (like_count_display, like_count_approximate) =
+        count_display_metadata(stat, "like", like_count)?;
+    let (comment_count_display, comment_count_approximate) =
+        count_display_metadata(stat, "comment", comment_count)?;
+    let (forward_count_display, forward_count_approximate) =
+        count_display_metadata(stat, "forward", forward_count)?;
     Ok(DynamicItem {
         id,
         kind,
@@ -606,10 +756,16 @@ pub(crate) fn parse_item(raw: &Value, depth: u8) -> Result<DynamicItem> {
         text_truncated,
         rich_nodes,
         stat: DynamicStats {
-            like_count: count(stat, "like")?,
-            comment_count: count(stat, "comment")?,
-            forward_count: count(stat, "forward")?,
+            like_count,
+            comment_count,
+            forward_count,
             liked: flag(stat.get("like").unwrap_or(&Value::Null), "status")?,
+            like_count_display,
+            comment_count_display,
+            forward_count_display,
+            like_count_approximate,
+            comment_count_approximate,
+            forward_count_approximate,
         },
         major,
         additional_type,
@@ -728,6 +884,159 @@ mod tests {
                 .unwrap()
                 .contains("not-public")
         );
+    }
+    #[test]
+    fn statistic_displays_distinguish_unknown_action_labels_from_numeric_zero() {
+        for (name, label) in [
+            ("like", "点赞"),
+            ("like", "赞"),
+            ("comment", "评论"),
+            ("forward", "转发"),
+        ] {
+            let stat = json!({(name):{"count":label}});
+            assert_eq!(count(&stat, name).unwrap(), None);
+            assert_eq!(count(&json!({(name):{"count":0}}), name).unwrap(), Some(0));
+            assert_eq!(
+                count(&json!({(name):{"count":"0"}}), name).unwrap(),
+                Some(0)
+            );
+        }
+        for hidden in [
+            Value::Null,
+            json!(""),
+            json!("--"),
+            json!("—"),
+            json!(-1),
+            json!("-1"),
+        ] {
+            assert_eq!(
+                count(&json!({"like":{"count":hidden}}), "like").unwrap(),
+                None
+            );
+        }
+        assert_eq!(
+            count(
+                &json!({"like":{"count":"not a number","hidden":true}}),
+                "like"
+            )
+            .unwrap(),
+            None
+        );
+        assert!(count(&json!({"like":{"count":"unknown metric"}}), "like").is_err());
+        assert!(count(&json!({"like":{"count":"评论"}}), "like").is_err());
+    }
+    #[test]
+    fn statistic_units_use_exact_decimal_arithmetic_and_ids_remain_strict() {
+        for (display, expected) in [
+            ("1.2万", 12000),
+            ("3.45亿", 345000000),
+            ("0.5k", 500),
+            ("2W", 20000),
+            ("1.25M", 1250000),
+            ("1,234", 1234),
+            ("1,234万", 12340000),
+            ("0万", 0),
+            ("1.0", 1),
+            ("1.2345万", 12345),
+            ("18446744073709551615", u64::MAX),
+        ] {
+            assert_eq!(
+                count(&json!({"like":{"count":display}}), "like").unwrap(),
+                Some(expected),
+                "{display}"
+            );
+        }
+        for display in [
+            "1.2",
+            "12,34",
+            "1.2.3万",
+            "1.00001万",
+            "18446744073709551616",
+            "1e4",
+            "1万+",
+            "NaN",
+        ] {
+            assert!(
+                count(&json!({"like":{"count":display}}), "like").is_err(),
+                "{display}"
+            );
+        }
+        assert_eq!(
+            count(&json!({"like":{"count":12.0}}), "like").unwrap(),
+            Some(12)
+        );
+        assert!(count(&json!({"like":{"count":12.5}}), "like").is_err());
+        assert!(number(&json!({"mid":"1.2万"}), "mid").is_err());
+        assert!(number(&json!({"comment_id_str":"评论"}), "comment_id_str").is_err());
+    }
+    #[test]
+    fn empty_optional_original_comment_id_never_becomes_a_fabricated_interaction_target() {
+        let mut forwarded = item("100", 42);
+        forwarded["type"] = json!("DYNAMIC_TYPE_FORWARD");
+        let mut original = item("101", 99);
+        original["basic"]["comment_id_str"] = json!("");
+        forwarded["orig"] = original;
+        let parsed = parse_item(&forwarded, 0).unwrap();
+        assert_eq!(parsed.comment_oid, Some(300));
+        assert_eq!(parsed.orig.as_ref().unwrap().comment_oid, None);
+        assert_eq!(parsed.orig.as_ref().unwrap().author.mid, Some(99));
+        assert_eq!(parsed.author.mid, Some(42));
+        for key in ["mid", "pub_ts"] {
+            let mut invalid = forwarded.clone();
+            invalid["modules"]["module_author"][key] = json!("");
+            assert!(parse_item(&invalid, 0).is_err(), "{key} must remain strict");
+        }
+        forwarded["orig"]["basic"]["comment_id_str"] = json!(" ");
+        assert!(parse_item(&forwarded, 0).is_err());
+    }
+    #[test]
+    fn compact_counts_keep_display_precision_and_do_not_relabel_unknown_or_exact_zero() {
+        let mut entry = item("100", 42);
+        entry["modules"]["module_stat"]["like"]["count"] = json!("1.2万");
+        entry["modules"]["module_stat"]["comment"]["count"] = json!("评论");
+        entry["modules"]["module_stat"]["forward"]["count"] = json!(0);
+        let stat = parse_item(&entry, 0).unwrap().stat;
+        assert_eq!(stat.like_count, Some(12000));
+        assert_eq!(stat.like_count_display.as_deref(), Some("1.2万"));
+        assert!(stat.like_count_approximate);
+        assert_eq!(stat.comment_count, None);
+        assert_eq!(stat.comment_count_display.as_deref(), Some("评论"));
+        assert!(!stat.comment_count_approximate);
+        assert_eq!(stat.forward_count, Some(0));
+        assert_eq!(stat.forward_count_display, None);
+        assert!(!stat.forward_count_approximate);
+        let wire = serde_json::to_value(&stat).unwrap();
+        assert_eq!(wire["like_count_approximate"], true);
+        assert_eq!(wire["like_count_display"], "1.2万");
+        assert_eq!(wire["forward_count"], 0);
+        assert!(wire.get("forward_count_display").is_none());
+        assert!(wire.get("forward_count_approximate").is_none());
+    }
+    #[test]
+    fn following_keeps_the_whole_bounded_provider_page_for_runtime_tail_caching() {
+        let mut entries = (100..125)
+            .map(|id| item(&id.to_string(), 42))
+            .collect::<Vec<_>>();
+        entries.push(json!({"id_str":"999","type":"DYNAMIC_TYPE_AD","private":"not projected"}));
+        let page = following_page(
+            json!({"items":entries,"has_more":true,"offset":"provider-next"}),
+            42,
+            None,
+        )
+        .unwrap();
+        assert_eq!(page["items"].as_array().unwrap().len(), 25);
+        assert_eq!(page["truncated"], false);
+        assert_eq!(page["next_offset"], "provider-next");
+        assert_eq!(page["viewer_mid"], 42);
+        assert!(page.get("owner_mid").is_none());
+        assert_eq!(page["omitted_promoted_items"], 1);
+        assert!(
+            !serde_json::to_string(&page)
+                .unwrap()
+                .contains("not projected")
+        );
+        let oversized = vec![json!({"type":"DYNAMIC_TYPE_AD"}); 101];
+        assert!(following_page(json!({"items":oversized,"has_more":true}), 42, None).is_err());
     }
     #[test]
     fn drawing_video_article_and_opus_are_references_without_invented_text_or_animation() {

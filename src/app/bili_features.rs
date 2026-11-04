@@ -67,8 +67,13 @@ fn bind_actor(rt: &Runtime, mid: u64) -> Result<()> {
 }
 impl Runtime {
     pub(super) fn bili_feature_open(&mut self, p: &Value) -> Result<Value> {
-        let (scope, target) = self.load_bili_feature(required_str(p, "target_ref")?)?;
+        let reference = p.get("reference").or_else(|| p.get("target_ref"))
+            .and_then(Value::as_str).ok_or("a Bilibili feature reference is required")?;
+        let (scope, target) = self.load_bili_feature(reference)?;
         super::tasks::check_account(p, &scope)?;
+        if p.get("platform").is_some_and(|v| v != "bilibili") {
+            return Err("platform differs from the saved Bilibili reference".into());
+        }
         let action = match target {
             Target::Folder { .. } => "favorite_contents",
             Target::Dynamic { .. } | Target::DynamicComment { .. } => "dynamic_open",
@@ -847,4 +852,23 @@ struct DanmakuCursor {
     page: u32,
     start: u64,
     end: u64,
+}
+
+
+#[cfg(test)]
+mod read_reference_tests {
+    use super::*;
+    #[test]
+    fn common_open_restores_dynamic_reference_and_checks_owner_before_network() {
+        let state = std::env::temp_dir().join(format!("bili-dynamic-open-owner-{}", std::process::id()));
+        private_dir(&state).unwrap();
+        let mut rt = Runtime::open(&state, "reader", None).unwrap();
+        let reference = rt.bili_dynamic_feature_ref("42").unwrap();
+        let error = rt.call("social.open", &json!({"reference":reference,"account":"other"})).unwrap_err();
+        assert!(error.contains("account differs"), "the common reference must resolve before owner validation: {error}");
+        let error = rt.call("social.open", &json!({"reference":reference,"platform":"tieba"})).unwrap_err();
+        assert!(error.contains("platform differs"));
+        drop(rt);
+        fs::remove_dir_all(state).unwrap();
+    }
 }

@@ -11,6 +11,10 @@ use std::collections::BTreeSet;
 const HOME_CURSOR: &str = "task-tieba-home-cursor";
 const HOME_SEEN_LIMIT: usize = 512;
 const FOLLOWED_FORUMS_CURSOR: &str = "task-tieba-followed-forums";
+// Native forum pages can include pinned/additional posts beyond the requested
+// rn=20. Preserve the SDK's full bounded page and deliver it through local tails.
+const FOLLOWED_FORUM_PROVIDER_ITEMS: usize = 200;
+const FOLLOWED_FORUM_SNAPSHOT_BYTES: usize = 2 * 1024 * 1024;
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ForumProgress {
@@ -98,6 +102,18 @@ fn preview_fragments(input: Vec<Fragment>) -> Vec<Fragment> {
             }),
         })
         .collect()
+}
+// This snapshot is private: ordinary Fragment serialization drops media URLs.
+// Preserve them only here so each delivered slice can create its own lazy refs.
+fn cache_followed_thread(mut thread: platform_tieba::ThreadSummary) -> Result<Value> {
+    let preview = preview_fragments(std::mem::take(&mut thread.fragments));
+    let mut value = serde_json::to_value(thread).map_err(|_| "cannot encode followed thread")?;
+    let fragments=preview.into_iter().map(|fragment|match fragment {
+        Fragment::Media {resource,label}=>Ok(json!({"type":"media","resource":{"kind":resource.kind,"url":resource.url,"mime":resource.mime,"width":resource.width,"height":resource.height,"duration_seconds":resource.duration_seconds},"label":label})),
+        other=>serde_json::to_value(other).map_err(|_|"cannot encode followed thread fragment".to_string()),
+    }).collect::<Result<Vec<_>>>()?;
+    value["fragments"] = json!(fragments);
+    Ok(value)
 }
 
 pub(super) struct TiebaState {
@@ -311,7 +327,7 @@ impl Runtime {
             || cursor.source != "followed_forums"
             || cursor.forums.len() > 200
             || cursor.index > cursor.forums.len()
-            || cursor.offset > 20
+            || cursor.offset > FOLLOWED_FORUM_PROVIDER_ITEMS
             || cursor.batches > 100
             || cursor.seen.len() > HOME_SEEN_LIMIT
             || !(1..=20).contains(&count)
@@ -348,8 +364,11 @@ impl Runtime {
         let cached = cursor.snapshot.is_some();
         let fetched = if let Some(snapshot) = &cursor.snapshot {
             let (_, path) = self.store.resolve(&scope, snapshot)?;
-            serde_json::from_slice::<FollowedForumSnapshot>(&read_bounded(&path, 2 * 1024 * 1024)?)
-                .map_err(|_| "invalid followed-forum snapshot")?
+            serde_json::from_slice::<FollowedForumSnapshot>(&read_bounded(
+                &path,
+                FOLLOWED_FORUM_SNAPSHOT_BYTES as u64,
+            )?)
+            .map_err(|_| "invalid followed-forum snapshot")?
         } else {
             if cursor.offset != 0 {
                 return Err("invalid followed-forum snapshot offset".into());
@@ -374,7 +393,7 @@ impl Runtime {
             {
                 return Err("followed forum response identity/page differs".into());
             }
-            if page.threads.len() > 20 {
+            if page.threads.len() > FOLLOWED_FORUM_PROVIDER_ITEMS {
                 return Err("followed forum page exceeds item bound".into());
             }
             cursor.forums[index].has_more = page.page.has_more && progress.page < 100;
@@ -386,24 +405,14 @@ impl Runtime {
             let forum_ref = self
                 .locators
                 .put_reusable(&scope, "task-tieba-forum", &page.forum)?;
-            let mut assets = self.locators.batch();
             let mut items = Vec::new();
             let mut batch_seen = BTreeSet::new();
             for item in page.threads {
                 if cursor.seen.contains(&item.thread_id.0) || !batch_seen.insert(item.thread_id.0) {
                     continue;
                 }
-                let target = assets.put(
-                    &scope,
-                    "task-target",
-                    &super::tasks::TaskTarget::Thread {
-                        thread: item.thread_id.0.to_string(),
-                    },
-                )?;
-                let content = fragments(&preview_fragments(item.fragments), &scope, &mut assets)?;
-                items.push(json!({"id":item.thread_id.0.to_string(),"thread_id":item.thread_id.0,"title":item.title,"author":item.author,"forum":page.forum,"forum_ref":forum_ref,"forum_open":{"tool":"social_open","args":{"reference":forum_ref}},"counts":{"replies":item.reply_count,"views":item.view_count},"created_at":item.created_at,"pinned":item.pinned,"featured":item.featured,"fragments":content,"excerpt_only":true,"target_ref":target,"open_tool":"social_open","media_downloaded":false}));
+                items.push(cache_followed_thread(item)?);
             }
-            assets.commit();
             FollowedForumSnapshot {
                 forum: page.forum,
                 forum_ref,
@@ -413,7 +422,7 @@ impl Runtime {
             }
         };
         if !forum_ids.contains(&fetched.forum.id)
-            || fetched.items.len() > 20
+            || fetched.items.len() > FOLLOWED_FORUM_PROVIDER_ITEMS
             || cursor.offset > fetched.items.len()
         {
             return Err("followed-forum snapshot is outside the saved follow list".into());
@@ -429,27 +438,47 @@ impl Runtime {
             .offset
             .saturating_add(count.min(remaining))
             .min(fetched.items.len());
-        let items = fetched.items[cursor.offset..end].to_vec();
-        for item in &items {
-            let id = item["thread_id"]
-                .as_u64()
-                .filter(|id| *id > 0 && *id <= i64::MAX as u64)
-                .ok_or("invalid cached followed-forum thread")?;
-            if item["forum"]["id"].as_u64() != Some(fetched.forum.id)
-                || item["forum_ref"].as_str() != Some(fetched.forum_ref.as_str())
-            {
-                return Err("cached thread differs from its followed forum".into());
-            }
-            cursor.seen.insert(id);
-        }
         let tail = end < fetched.items.len();
+        let snapshot_bytes =
+            if tail && cursor.snapshot.is_none() && cursor.seen.len() < HOME_SEEN_LIMIT {
+                let bytes = serde_json::to_vec(&fetched)
+                    .map_err(|_| "cannot encode followed-forum page")?;
+                if bytes.len() > FOLLOWED_FORUM_SNAPSHOT_BYTES {
+                    return Err("followed-forum snapshot exceeds byte budget".into());
+                }
+                Some(bytes)
+            } else {
+                None
+            };
+        // Only materialize capabilities for the model's requested slice. In
+        // particular, a 200-post provider page must not allocate 200*12 media
+        // locators before those posts have ever been delivered.
+        let mut assets = self.locators.batch();
+        let mut items = Vec::new();
+        for value in &fetched.items[cursor.offset..end] {
+            let item: platform_tieba::ThreadSummary = serde_json::from_value(value.clone())
+                .map_err(|_| "invalid cached followed thread")?;
+            item.thread_id.validate().map_err(|e| e.to_string())?;
+            if !cursor.seen.insert(item.thread_id.0) {
+                continue;
+            }
+            let target = assets.put(
+                &scope,
+                "task-target",
+                &super::tasks::TaskTarget::Thread {
+                    thread: item.thread_id.0.to_string(),
+                },
+            )?;
+            let content = fragments(&item.fragments, &scope, &mut assets)?;
+            items.push(json!({"id":item.thread_id.0.to_string(),"thread_id":item.thread_id.0,"title":item.title,"author":item.author,"forum":fetched.forum,"forum_ref":fetched.forum_ref,"forum_open":{"tool":"social_open","args":{"reference":fetched.forum_ref}},"counts":{"replies":item.reply_count,"views":item.view_count},"created_at":item.created_at,"pinned":item.pinned,"featured":item.featured,"fragments":content,"excerpt_only":true,"target_ref":target,"open_tool":"social_open","media_downloaded":false}));
+        }
+        assets.commit();
         let can_continue = cursor.seen.len() < HOME_SEEN_LIMIT
             && (tail || (cursor.batches < 100 && cursor.forums.iter().any(|v| v.has_more)));
         let continuation = if can_continue {
             if tail {
                 if cursor.snapshot.is_none() {
-                    let bytes = serde_json::to_vec(&fetched)
-                        .map_err(|_| "cannot encode followed-forum page")?;
+                    let bytes = snapshot_bytes.ok_or("missing followed-forum snapshot bytes")?;
                     cursor.snapshot = Some(
                         self.store
                             .import(
@@ -727,6 +756,183 @@ impl Runtime {
 #[cfg(test)]
 mod projection_tests {
     use super::*;
+    fn synthetic_followed_thread(id: u64, media: bool) -> platform_tieba::ThreadSummary {
+        platform_tieba::ThreadSummary {
+            thread_id: ThreadId(id),
+            first_post_id: None,
+            title: format!("Synthetic post {id}"),
+            author: Default::default(),
+            reply_count: Some(0),
+            view_count: Some(0),
+            created_at: Some(1),
+            last_reply_at: None,
+            pinned: false,
+            featured: false,
+            fragments: if media {
+                vec![Fragment::Media {
+                    resource: MediaResource {
+                        kind: MediaKind::Image,
+                        url: "https://tiebapic.baidu.com/synthetic-cache-image.png".into(),
+                        mime: Some("image/png".into()),
+                        width: Some(1),
+                        height: Some(1),
+                        duration_seconds: None,
+                    },
+                    label: "Synthetic preview".into(),
+                }]
+            } else {
+                vec![Fragment::Text {
+                    text: "Synthetic preview".into(),
+                }]
+            },
+        }
+    }
+    #[test]
+    fn oversized_provider_page_keeps_all_tails_and_materializes_only_delivered_media() {
+        let root =
+            std::env::temp_dir().join(format!("tieba-followed-large-page-{}", std::process::id()));
+        private_dir(&root).unwrap();
+        let mut runtime = Runtime::open(&root, "public", None).unwrap();
+        let scope = Scope {
+            platform: Platform::Tieba,
+            account: "alice".into(),
+        };
+        let forum = platform_tieba::Forum {
+            id: 7,
+            name: "Synthetic followed forum".into(),
+        };
+        let forum_ref = runtime
+            .locators
+            .put_reusable(&scope, "task-tieba-forum", &forum)
+            .unwrap();
+        let rows = (1000..1000 + FOLLOWED_FORUM_PROVIDER_ITEMS as u64)
+            .map(|id| cache_followed_thread(synthetic_followed_thread(id, true)).unwrap())
+            .collect::<Vec<_>>();
+        let snapshot = FollowedForumSnapshot {
+            forum: forum.clone(),
+            forum_ref,
+            items: rows,
+            server_page: 1,
+            server_has_more: false,
+        };
+        let bytes = serde_json::to_vec(&snapshot).unwrap();
+        assert!(bytes.len() < FOLLOWED_FORUM_SNAPSHOT_BYTES);
+        assert!(
+            std::str::from_utf8(&bytes)
+                .unwrap()
+                .contains("https://tiebapic.baidu.com/synthetic-cache-image.png"),
+            "private snapshot retains the media URL for later slices"
+        );
+        let stored = runtime
+            .store
+            .import(
+                &scope,
+                "synthetic-provider-large-page",
+                "application/json",
+                &mut bytes.as_slice(),
+            )
+            .unwrap();
+        let cursor = FollowedForumsCursor {
+            schema: 1,
+            source: "followed_forums".into(),
+            forums: vec![ForumProgress {
+                forum,
+                page: 1,
+                has_more: false,
+            }],
+            index: 0,
+            seen: BTreeSet::new(),
+            snapshot: Some(stored.id),
+            offset: 0,
+            batches: 1,
+            provider_list_may_be_capped: false,
+        };
+        let reference = runtime
+            .locators
+            .put(&scope, FOLLOWED_FORUMS_CURSOR, &cursor)
+            .unwrap();
+        let locator_count = || {
+            fs::read_dir(root.join("locators"))
+                .unwrap()
+                .filter_map(|entry| entry.ok())
+                .filter(|entry| {
+                    entry
+                        .path()
+                        .extension()
+                        .is_some_and(|value| value == "json")
+                })
+                .count()
+        };
+        let before = locator_count();
+        let first = runtime
+            .call_tieba_discover(&json!({"continuation":reference,"limit":1}))
+            .unwrap();
+        assert_eq!(first["items"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            locator_count() - before,
+            3,
+            "one delivered thread, one media capability and one continuation; the other 199 previews allocate nothing"
+        );
+        assert!(
+            !first
+                .to_string()
+                .contains("https://tiebapic.baidu.com/synthetic-cache-image.png")
+        );
+        let mut ids = vec![first["items"][0]["thread_id"].as_u64().unwrap()];
+        let mut continuation = first["continuation"].as_str().map(str::to_owned);
+        while let Some(reference) = continuation {
+            let page = runtime
+                .call_tieba_discover(&json!({"continuation":reference,"limit":17}))
+                .unwrap();
+            assert!(page["items"].as_array().unwrap().len() <= 17);
+            assert!(
+                !page
+                    .to_string()
+                    .contains("https://tiebapic.baidu.com/synthetic-cache-image.png")
+            );
+            for item in page["items"].as_array().unwrap() {
+                let asset = item["fragments"][0]["asset"].as_str().unwrap();
+                let media: Value = runtime.locators.get(&scope, "tieba-media", asset).unwrap();
+                assert_eq!(
+                    media["url"],
+                    "https://tiebapic.baidu.com/synthetic-cache-image.png"
+                );
+                ids.push(item["thread_id"].as_u64().unwrap());
+            }
+            continuation = page["continuation"].as_str().map(str::to_owned);
+        }
+        assert_eq!(
+            ids,
+            (1000..1000 + FOLLOWED_FORUM_PROVIDER_ITEMS as u64).collect::<Vec<_>>()
+        );
+        let oversized = vec![b' '; FOLLOWED_FORUM_SNAPSHOT_BYTES + 1];
+        let stored = runtime
+            .store
+            .import(
+                &scope,
+                "synthetic-over-budget-page",
+                "application/json",
+                &mut oversized.as_slice(),
+            )
+            .unwrap();
+        let invalid = FollowedForumsCursor {
+            snapshot: Some(stored.id),
+            ..cursor
+        };
+        let reference = runtime
+            .locators
+            .put(&scope, FOLLOWED_FORUMS_CURSOR, &invalid)
+            .unwrap();
+        assert!(
+            runtime
+                .call_tieba_discover(&json!({"continuation":reference}))
+                .is_err()
+        );
+        assert!(!root.join("outbox").exists());
+        drop(runtime);
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn followed_forum_pages_are_membership_bound_cached_and_openable_without_network() {
         let root = std::env::temp_dir().join(format!(
@@ -747,22 +953,10 @@ mod projection_tests {
             .locators
             .put_reusable(&scope, "task-tieba-forum", &forum)
             .unwrap();
-        let mut items = Vec::new();
-        for thread in [42u64, 43, 44] {
-            let target = runtime
-                .locators
-                .put(
-                    &scope,
-                    "task-target",
-                    &super::super::tasks::TaskTarget::Thread {
-                        thread: thread.to_string(),
-                    },
-                )
-                .unwrap();
-            items.push(
-                json!({"thread_id":thread,"forum":forum,"forum_ref":forum_ref,"target_ref":target}),
-            );
-        }
+        let items = [42u64, 43, 44]
+            .into_iter()
+            .map(|id| cache_followed_thread(synthetic_followed_thread(id, false)).unwrap())
+            .collect();
         let snapshot = FollowedForumSnapshot {
             forum: forum.clone(),
             forum_ref: forum_ref.clone(),
