@@ -406,7 +406,54 @@ impl Runtime {
     }
 
     pub(super) fn call_task(&mut self, method: &str, params: &Value) -> Result<Value> {
+        if method == "social.feeds" {
+            return self.discover_sources(params);
+        }
+        if method == "social.discover" && let Some(action) = params.get("action") {
+            match action.as_str() {
+                Some("sources") => {
+                    if ["feed_ref", "continuation", "topic"].iter().any(|key| params.get(*key).is_some()) {
+                        return Err("source catalog filters do not take a feed or continuation".into());
+                    }
+                    return self.discover_sources(params);
+                }
+                Some("read") => {},
+                _ => return Err("discover action must be sources or read".into()),
+            }
+        }
+        if let (Some(cursor), Some(requested)) = (params["continuation"].as_str(), params.get("platform")) {
+            let scope = self.locators.scope_for_reference(cursor)?;
+            if serde_json::to_value(&scope.platform).map_err(|e| e.to_string())? != *requested {
+                return Err("continuation platform differs from its saved owner".into());
+            }
+        }
+        if method == "social.discover" {
+            if params.get("feed_ref").is_some() { return self.discover_feed_ref(params); }
+            if let Some(value) = params.get("platform") {
+                let name = value.as_str().ok_or("platform must be a string")?;
+                let source = params.get("source").map(|v| v.as_str().ok_or("source must be a string")).transpose()?.unwrap_or("recommended");
+                if let Some(reason) = super::discovery::unavailable(name, source) {
+                    return Ok(json!({"status":"unsupported","platform":name,"detail":reason}));
+                }
+                if !["bilibili", "tieba", "x", "pixiv", "reddit", "discord", "github"].contains(&name) {
+                    return Err("unknown recommendation platform".into());
+                }
+            }
+        }
+        if self.tieba_forum_read_matches(method, params) {
+            return self.open_tieba_forum_read(params);
+        }
+        if method == "social.discover" && self.tieba_discover_matches(params) {
+            return self.call_tieba_discover(params);
+        }
+        if self.github_following_matches(method, params) {
+            return self.call_github_following(params);
+        }
+        if self.discord_discover_matches(method, params) {
+            return self.call_discord_discover(method, params);
+        }
         if self.x_task_matches(method, params) {
+            if method == "social.discover" { return self.call_x_discover(params); }
             return self.call_x_social(method, params);
         }
         if self.pixiv_task_matches(method, params) {
@@ -631,7 +678,7 @@ impl Runtime {
                 "social.search" => saved.method == "bilibili.search",
                 "social.discover" => matches!(
                     saved.method.as_str(),
-                    "bilibili.popular" | "bilibili.recommended"
+                    "bilibili.popular" | "bilibili.recommended" | "bilibili.following"
                 ),
                 "social.creator_content" => matches!(
                     saved.method.as_str(),
@@ -647,6 +694,8 @@ impl Runtime {
             {
                 let expected = if saved.method == "bilibili.recommended" {
                     "recommended"
+                } else if saved.method == "bilibili.following" {
+                    "following"
                 } else {
                     "popular"
                 };
@@ -704,12 +753,13 @@ impl Runtime {
             "social.publications" => "publications",
             "social.search" => "search",
             "social.discover" => match match params.get("source") {
-                None => "popular",
+                None => "recommended",
                 Some(value) => value.as_str().ok_or("discover source must be a string")?,
             } {
                 "popular" => "popular",
                 "recommended" => "recommended",
-                _ => return Err("discover source must be recommended or popular".into()),
+                "following" => "following",
+                _ => return Err("discover source must be recommended, following or popular".into()),
             },
             _ => return Err("invalid list task".into()),
         };
@@ -726,7 +776,7 @@ impl Runtime {
                 Ok(json!({"status":"ok","scope":rt.scope(Platform::Bilibili),"counts":result["page"]["data"],"content_writes":false}))
             });
         }
-        let login = matches!(suffix, "notifications" | "publications" | "recommended");
+        let login = matches!(suffix, "notifications" | "publications" | "recommended" | "following");
         let mut request = params.clone();
         let object = request.as_object_mut().unwrap();
         object.remove("platform");
@@ -806,7 +856,7 @@ impl Runtime {
             } else {
                 can_continue = false;
             }
-        } else if method == "bilibili.dynamics" {
+        } else if matches!(method, "bilibili.dynamics" | "bilibili.following") {
             if let Some(offset) = data["next_offset"].as_str() {
                 next["offset"] = json!(offset);
             } else {
@@ -1277,6 +1327,23 @@ mod tests {
         ));
         private_dir(&path).unwrap();
         path
+    }
+    #[test]
+    fn following_dynamics_keep_source_and_cached_tail_separate_from_home() {
+        let dir = lab();
+        let mut rt = Runtime::open(&dir, "public", None).unwrap();
+        let data = json!({"items":[{"id":"100","text":"one"},{"id":"101","text":"two"}],
+            "source":"bilibili_following_dynamics","signed_in_request":true,"has_more":false});
+        let first = rt.project_task_list("bilibili.following", &json!({"source":"following","limit":1}), data, BTreeSet::new()).unwrap();
+        let cursor = first["continuation"].as_str().unwrap();
+        assert!(rt.call("social.discover", &json!({"source":"recommended","continuation":cursor})).is_err());
+        let next = rt.call("social.discover", &json!({"continuation":cursor})).unwrap();
+        assert_eq!(next["items"][0]["id"], "101");
+        assert_eq!(next["context"]["source"], "bilibili_following_dynamics");
+        assert_eq!(next["provider_pages_read"], 0);
+        assert!(next["continuation"].is_null());
+        drop(rt);
+        fs::remove_dir_all(dir).unwrap();
     }
     #[test]
     fn homepage_source_and_cached_tail_survive_continuation_without_public_fallback() {

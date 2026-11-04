@@ -451,11 +451,18 @@ fn semantic_tools_choose_profile_accounts_without_requiring_provider_boilerplate
             ("bilibili".into(), "bili-reader".into()),
             ("qq".into(), "qq-reader".into()),
             ("tieba".into(), "tieba-reader".into()),
+            ("pixiv".into(), "pixiv-reader".into()),
+            ("reddit".into(), "reddit-reader".into()),
+            ("x".into(), "x-reader".into()),
         ]),
     };
     for (tool, mut input, expected) in [
         ("social_chats", json!({"kind":"friends"}), "qq-reader"),
         ("social_search", json!({"keyword":"Rust"}), "bili-reader"),
+        ("social_discover", json!({"platform":"pixiv"}), "pixiv-reader"),
+        ("social_discover", json!({"platform":"reddit"}), "reddit-reader"),
+        ("social_discover", json!({"platform":"x"}), "x-reader"),
+        ("social_discover", json!({"platform":"tieba"}), "tieba-reader"),
         (
             "social_open",
             json!({"reference":"https://t.bilibili.com/1234"}),
@@ -475,4 +482,7 @@ fn semantic_tools_choose_profile_accounts_without_requiring_provider_boilerplate
         apply_default_account(&profile, tool, &mut input);
         assert_eq!(input["account"], expected);
     }
+    let mut catalog = json!({"action":"sources","source":"following"});
+    apply_default_account(&profile, "social_discover", &mut catalog);
+    assert!(catalog.get("account").is_none(), "a cross-platform catalog must not inherit the Bilibili alias");
 }

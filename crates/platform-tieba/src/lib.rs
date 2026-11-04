@@ -4,6 +4,8 @@
 mod actions;
 mod auth;
 mod discovery;
+mod following;
+mod home;
 mod model;
 mod notifications;
 mod posting;
@@ -15,6 +17,8 @@ pub use auth::{
     AccountInfo, AuthClient, AuthError, AuthResult, LoginAttempt, LoginStatus, QrReceipt, Session,
 };
 pub use discovery::{ForumThreads, SearchHit, SearchPage, ThreadSummary};
+pub use following::FollowedForums;
+pub use home::{RecommendationPage, RecommendedThread};
 pub use model::*;
 pub use notifications::{
     Notification, NotificationActor, NotificationKind, NotificationPage, NotificationTarget,

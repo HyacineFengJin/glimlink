@@ -3,6 +3,7 @@
 //! The browser stays on the operator; this module contains only bounded Rust
 //! requests, private session persistence, projections and lazy media references.
 use super::*;
+mod discord_discovery;
 use crate::private_state::account_directory;
 use platform_web::{Site, User};
 use serde::{Deserialize, Serialize};
@@ -48,6 +49,45 @@ struct Cursor {
     after: Option<String>,
     snapshot: Option<String>,
     offset: usize,
+    #[serde(default)]
+    recommendation: Option<RecommendationState>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RecommendationState {
+    source: String,
+    viewer: String,
+    seen: Vec<String>,
+    pages: u32,
+    empty_pages: u32,
+}
+fn recommendation_request(params: &Value, state: Option<&RecommendationState>) -> Result<()> {
+    if params
+        .get("source")
+        .is_some_and(|v| !matches!(v.as_str(), Some("recommended" | "following")))
+        || state.is_some_and(|s| {
+            params
+                .get("source")
+                .is_some_and(|v| v.as_str() != Some(s.source.as_str()))
+        })
+    {
+        return Err("Reddit recommendation source differs; select recommended or following".into());
+    }
+    if let Some(state) = state {
+        if !matches!(state.source.as_str(), "recommended" | "following")
+            || state.pages == 0
+            || state.pages > 32
+            || state.seen.len() > 512
+            || state.empty_pages > 2
+            || state
+                .seen
+                .iter()
+                .any(|id| platform_web::id(Site::Reddit, id).is_err())
+        {
+            return Err("invalid Reddit recommendation continuation".into());
+        }
+    }
+    Ok(())
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -273,6 +313,12 @@ impl Runtime {
             if cursor.action != method || platform(cursor.site) != scope.platform {
                 return Err("website continuation kind/platform mismatch".into());
             }
+            if cursor.site == Site::Reddit && method == "social.discover" {
+                let recommendation = cursor.recommendation.as_ref().ok_or("Reddit recommendation continuation predates source verification; refresh the homepage")?;
+                recommendation_request(params, Some(recommendation))?;
+                return self
+                    .with_task_scope(&scope, |rt| rt.web_reddit_home(params, Some(&cursor)));
+            }
             return self.with_task_scope(&scope, |rt| {
                 rt.web_read(
                     cursor.site,
@@ -322,9 +368,195 @@ impl Runtime {
             Some("discord") => Site::Discord,
             _ => return Err("select a website platform".into()),
         };
+        if site == Site::Reddit && method == "social.discover" {
+            recommendation_request(params, None)?;
+            return self.with_platform_account(site.name(), params, true, |rt| {
+                rt.web_reddit_home(params, None)
+            });
+        }
         self.with_platform_account(site.name(), params, true, |rt| {
             rt.web_read(site, method, params, None, None, None, 0)
         })
+    }
+    fn web_reddit_home(&mut self, params: &Value, cursor: Option<&Cursor>) -> Result<Value> {
+        use std::collections::BTreeSet;
+        let state = cursor.and_then(|v| v.recommendation.as_ref());
+        recommendation_request(params, state)?;
+        let source = state
+            .map(|v| v.source.as_str())
+            .or_else(|| params["source"].as_str())
+            .unwrap_or("recommended");
+        let count = number(params, "limit", 10)?;
+        if !(1..=20).contains(&count) {
+            return Err("website list limit must be 1..20".into());
+        }
+        let saved = saved(&self.state, Site::Reddit, &self.account)?
+            .ok_or("website authentication required")?;
+        if state.is_some_and(|state| state.viewer != saved.user.id) {
+            return Err("Reddit recommendation viewer differs".into());
+        }
+        if let Some(cursor) = cursor.filter(|value| value.snapshot.is_some()) {
+            let snapshot = cursor.snapshot.as_deref().unwrap();
+            let scope = self.scope(Platform::Reddit);
+            let (_, path) = self.store.resolve(&scope, snapshot)?;
+            let rows: Vec<Value> = serde_json::from_slice(&read_bounded(&path, 2 * 1024 * 1024)?)
+                .map_err(|_| "invalid Reddit recommendation snapshot")?;
+            return self.web_reddit_recommendation_page(
+                &scope,
+                &rows,
+                cursor.offset,
+                Some(snapshot),
+                cursor.after.as_deref(),
+                state.ok_or("missing Reddit recommendation state")?.clone(),
+                count as usize,
+            );
+        }
+        let client = platform_web::Client::new(saved.session);
+        // A stale cookie must not silently turn an anonymous listing into the
+        // claimed account homepage. Check the session actor for every fetch.
+        if client.me().map_err(|e| error(Site::Reddit, e))?.id != saved.user.id {
+            return Err("Reddit recommendation viewer differs".into());
+        }
+        let after = cursor.and_then(|v| v.after.as_deref());
+        let raw = client
+            .reddit_home_feed(source, after, count)
+            .map_err(|e| error(Site::Reddit, e))?;
+        if raw["kind"] != "Listing" {
+            return Err("Reddit homepage listing schema changed".into());
+        }
+        let rows = raw
+            .pointer("/data/children")
+            .and_then(Value::as_array)
+            .ok_or("Reddit homepage omitted listing children")?;
+        if rows.len() > 100 {
+            return Err("Reddit homepage exceeds item bound".into());
+        }
+        let mut seen: BTreeSet<String> = state
+            .map(|v| v.seen.iter().cloned().collect())
+            .unwrap_or_default();
+        let mut items = Vec::new();
+        for row in rows {
+            if seen.len() >= 512 {
+                break;
+            }
+            if row["kind"] != "t3"
+                || row["data"]
+                    .get("promoted")
+                    .is_some_and(|v| !v.is_null() && v != false)
+            {
+                continue;
+            }
+            let id = row["data"]["id"]
+                .as_str()
+                .ok_or("Reddit recommendation omitted post id")?;
+            platform_web::id(Site::Reddit, id).map_err(|e| error(Site::Reddit, e))?;
+            if !seen.insert(id.into()) {
+                continue;
+            }
+            let mut item = self.web_reddit_post(&row["data"])?;
+            if let Some(text) = item["text"].as_str() {
+                let truncated = text.chars().count() > 640 || item["text_truncated"] == true;
+                let text = text.chars().take(640).collect::<String>();
+                item["text"] = json!(text);
+                item["text_truncated"] = json!(truncated);
+            }
+            items.push(item);
+        }
+        let next = match raw.pointer("/data/after") {
+            Some(Value::Null) => None,
+            Some(Value::String(value)) => {
+                platform_web::fullname(value).map_err(|e| error(Site::Reddit, e))?;
+                if !value.starts_with("t3_") {
+                    return Err("Reddit homepage cursor is not a post".into());
+                }
+                Some(value.as_str())
+            }
+            _ => return Err("Reddit homepage cursor schema changed".into()),
+        };
+        if next.is_some() && next == after {
+            return Err("Reddit recommendation cursor did not advance".into());
+        }
+        let pages = state.map_or(1, |v| v.pages + 1);
+        let empty_pages = if items.is_empty() {
+            state.map_or(1, |v| v.empty_pages + 1)
+        } else {
+            0
+        };
+        let scope = self.scope(Platform::Reddit);
+        self.web_reddit_recommendation_page(
+            &scope,
+            &items,
+            0,
+            None,
+            next,
+            RecommendationState {
+                source: source.into(),
+                viewer: saved.user.id,
+                seen: seen.into_iter().collect(),
+                pages,
+                empty_pages,
+            },
+            count as usize,
+        )
+    }
+    fn web_reddit_recommendation_page(
+        &mut self,
+        scope: &Scope,
+        rows: &[Value],
+        offset: usize,
+        snapshot: Option<&str>,
+        after: Option<&str>,
+        state: RecommendationState,
+        count: usize,
+    ) -> Result<Value> {
+        recommendation_request(&json!({}), Some(&state))?;
+        if rows.len() > 100 || offset > rows.len() || !(1..=20).contains(&count) {
+            return Err("invalid Reddit recommendation page".into());
+        }
+        let end = offset.saturating_add(count).min(rows.len());
+        let budget_exhausted =
+            state.pages >= 32 || state.seen.len() >= 512 || state.empty_pages >= 2;
+        let cached_tail = end < rows.len();
+        let following = state.source == "following";
+        let continuation = if cached_tail || (after.is_some() && !budget_exhausted) {
+            let snapshot = if cached_tail {
+                Some(match snapshot {
+                    Some(value) => value.to_owned(),
+                    None => {
+                        let bytes = serde_json::to_vec(rows)
+                            .map_err(|_| "cannot encode Reddit recommendation snapshot")?;
+                        self.store
+                            .import(
+                                scope,
+                                "reddit-recommendations",
+                                "application/json",
+                                &mut bytes.as_slice(),
+                            )?
+                            .id
+                    }
+                })
+            } else {
+                None
+            };
+            Some(self.locators.put(
+                scope,
+                CURSOR,
+                &Cursor {
+                    site: Site::Reddit,
+                    action: "social.discover".into(),
+                    target: None,
+                    after: after.map(str::to_owned),
+                    offset: if cached_tail { end } else { 0 },
+                    snapshot,
+                    recommendation: Some(state),
+                },
+            )?)
+        } else {
+            None
+        };
+        Ok(
+            json!({"status":"ok","scope":scope,"items":rows[offset..end],"has_more":continuation.is_some(),"provider_has_more":after.is_some(),"continuation":continuation,"source":if following{"reddit_subscription_home_hot"}else{"reddit_home_best"},"signed_in_request":true,"viewer_verified":true,"recommendation_kind":if following{"subscription_updates"}else{"personalized_home"},"sort":if following{"hot"}else{"best"},"following_scope":if following{json!("The account's subscribed communities and any followed-profile content supplied in its home listing; not a people-only feed.")}else{Value::Null},"cached":snapshot.is_some(),"media_downloaded":false,"refresh_supported":true,"stop_reason":if cached_tail{"cached_tail"}else if budget_exhausted{"recommendation_cursor_budget"}else if after.is_none(){"provider_end"}else{"page_complete"},"pagination_note":"Continuation preserves the selected account feed, viewer, cached page tails and seen-post deduplication. Omit it to refresh. Recommended uses personalized Best; Following uses the separate subscription homepage Hot sort."}),
+        )
     }
     fn web_read(
         &mut self,
@@ -376,53 +608,8 @@ impl Runtime {
         match site {
             Site::Reddit => {
                 if method == "social.discover" {
-                    if params.get("source").is_some_and(|v| v != "recommended") {
-                        return Ok(
-                            json!({"status":"unsupported","detail":"Reddit currently provides the signed-in homepage feed."}),
-                        );
-                    }
-                    let raw = client
-                        .reddit_home(after, count)
-                        .map_err(|e| error(site, e))?;
-                    let rows = raw
-                        .pointer("/data/children")
-                        .and_then(Value::as_array)
-                        .ok_or("Reddit listing schema changed")?;
-                    let mut items = Vec::new();
-                    for row in rows.iter().take(count as usize) {
-                        if row["kind"] == "t3" {
-                            let mut item = self.web_reddit_post(&row["data"])?;
-                            if let Some(text) = item["text"].as_str() {
-                                let truncated =
-                                    text.chars().count() > 640 || item["text_truncated"] == true;
-                                item["text"] = json!(text.chars().take(640).collect::<String>());
-                                item["text_truncated"] = json!(truncated);
-                            }
-                            items.push(item)
-                        }
-                    }
-                    let next = raw
-                        .pointer("/data/after")
-                        .and_then(Value::as_str)
-                        .filter(|s| platform_web::fullname(s).is_ok());
-                    let continuation = next
-                        .map(|after| {
-                            self.locators.put(
-                                &scope,
-                                CURSOR,
-                                &Cursor {
-                                    site,
-                                    action: method.into(),
-                                    target: None,
-                                    after: Some(after.into()),
-                                    snapshot: None,
-                                    offset: 0,
-                                },
-                            )
-                        })
-                        .transpose()?;
-                    return Ok(
-                        json!({"status":"ok","scope":scope,"items":items,"continuation":continuation,"has_more":next.is_some(),"media_downloaded":false}),
+                    return Err(
+                        "Reddit homepage recommendations do not accept a post target".into(),
                     );
                 }
                 let Some(Target::RedditPost { post }) = target else {
@@ -537,6 +724,7 @@ impl Runtime {
                                     after: Some(next.into()),
                                     snapshot: None,
                                     offset: 0,
+                                    recommendation: None,
                                 },
                             )
                         })
@@ -631,6 +819,7 @@ impl Runtime {
                     after: None,
                     snapshot: Some(snapshot),
                     offset: end,
+                    recommendation: None,
                 },
             )?)
         } else {
@@ -711,6 +900,168 @@ impl Runtime {
 mod tests {
     use super::*;
     #[test]
+    fn reddit_recommendation_page_tails_are_cached_without_losing_or_refetching_posts() {
+        let state =
+            std::env::temp_dir().join(format!("reddit-recommendation-tail-{}", std::process::id()));
+        private_dir(&state).unwrap();
+        let directory = account_directory(&state, "reddit", "alice").unwrap();
+        save_private_new(&directory.join("session.json"),&json!({"schema":1,"user":{"id":"actor","name":"Synthetic"},"session":{"site":"reddit","credential":"reddit_session=synthetic"}})).unwrap();
+        let mut rt = Runtime::open(&state, "public", None).unwrap();
+        let scope = Scope {
+            platform: Platform::Reddit,
+            account: "alice".into(),
+        };
+        let rows = (1..=3)
+            .map(|id| json!({"id":id.to_string(),"text":"Synthetic recommended post"}))
+            .collect::<Vec<_>>();
+        let first = rt
+            .web_reddit_recommendation_page(
+                &scope,
+                &rows,
+                0,
+                None,
+                None,
+                RecommendationState {
+                    source: "recommended".into(),
+                    viewer: "actor".into(),
+                    seen: vec!["1".into(), "2".into(), "3".into()],
+                    pages: 1,
+                    empty_pages: 0,
+                },
+                1,
+            )
+            .unwrap();
+        assert_eq!(first["items"][0]["id"], "1");
+        assert_eq!(first["provider_has_more"], false);
+        assert_eq!(first["has_more"], true);
+        let second = rt
+            .call(
+                "social.discover",
+                &json!({"continuation":first["continuation"],"limit":20}),
+            )
+            .unwrap();
+        assert_eq!(
+            second["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v["id"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["2", "3"]
+        );
+        assert_eq!(second["cached"], true);
+        assert_eq!(second["has_more"], false);
+        assert!(second["continuation"].is_null());
+        assert!(!state.join("outbox").exists());
+        drop(rt);
+        fs::remove_dir_all(state).unwrap();
+    }
+    #[test]
+    fn personalized_reddit_continuations_reject_source_and_account_switches_before_requests() {
+        let state = std::env::temp_dir().join(format!(
+            "reddit-recommendation-scope-{}",
+            std::process::id()
+        ));
+        private_dir(&state).unwrap();
+        let mut rt = Runtime::open(&state, "public", None).unwrap();
+        let scope = Scope {
+            platform: Platform::Reddit,
+            account: "alice".into(),
+        };
+        let cursor = rt
+            .locators
+            .put(
+                &scope,
+                CURSOR,
+                &Cursor {
+                    site: Site::Reddit,
+                    action: "social.discover".into(),
+                    target: None,
+                    after: Some("t3_abc".into()),
+                    snapshot: None,
+                    offset: 0,
+                    recommendation: Some(RecommendationState {
+                        source: "recommended".into(),
+                        viewer: "actor".into(),
+                        seen: vec!["abc".into()],
+                        pages: 1,
+                        empty_pages: 0,
+                    }),
+                },
+            )
+            .unwrap();
+        assert!(
+            rt.call(
+                "social.discover",
+                &json!({"continuation":cursor,"source":"popular"})
+            )
+            .unwrap_err()
+            .contains("source differs")
+        );
+        assert!(
+            rt.call(
+                "social.discover",
+                &json!({"continuation":cursor,"account":"bob"})
+            )
+            .unwrap_err()
+            .contains("account differs")
+        );
+        assert!(
+            rt.call(
+                "social.discover",
+                &json!({"continuation":cursor,"platform":"discord"})
+            )
+            .unwrap_err()
+            .contains("platform differs")
+        );
+        let old = rt
+            .locators
+            .put(
+                &scope,
+                CURSOR,
+                &Cursor {
+                    site: Site::Reddit,
+                    action: "social.discover".into(),
+                    target: None,
+                    after: Some("t3_abc".into()),
+                    snapshot: None,
+                    offset: 0,
+                    recommendation: None,
+                },
+            )
+            .unwrap();
+        assert!(
+            rt.call("social.discover", &json!({"continuation":old}))
+                .unwrap_err()
+                .contains("predates source verification")
+        );
+        assert!(!state.join("outbox").exists());
+        let following = RecommendationState {
+            source: "following".into(),
+            viewer: "actor".into(),
+            seen: Vec::new(),
+            pages: 1,
+            empty_pages: 0,
+        };
+        assert!(
+            recommendation_request(&json!({"source":"recommended"}), Some(&following)).is_err()
+        );
+        let page = rt
+            .web_reddit_recommendation_page(&scope, &[], 0, None, None, following, 10)
+            .unwrap();
+        assert_eq!(page["source"], "reddit_subscription_home_hot");
+        assert_eq!(page["sort"], "hot");
+        assert_eq!(page["recommendation_kind"], "subscription_updates");
+        assert!(
+            page["following_scope"]
+                .as_str()
+                .unwrap()
+                .contains("not a people-only feed")
+        );
+        drop(rt);
+        fs::remove_dir_all(state).unwrap();
+    }
+    #[test]
     fn website_tools_keep_account_platform_media_and_pagination_boundaries() {
         let state = std::env::temp_dir().join(format!("web-tool-ownership-{}", std::process::id()));
         private_dir(&state).unwrap();
@@ -776,6 +1127,7 @@ mod tests {
                         after: None,
                         snapshot: None,
                         offset: 0,
+                        recommendation: None,
                     },
                 )
                 .unwrap();

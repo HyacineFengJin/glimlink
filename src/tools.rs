@@ -75,8 +75,8 @@ pub fn specs() -> Vec<DynamicToolSpec> {
         ),
         tool(
             "social_open",
-            "Open a Bilibili video, Tieba thread, X profile/post, Pixiv artwork, Reddit post, or Discord guild/channel URL, a target_ref, or notification_ref. Pixiv returns metadata and lazy regular/original image refs; use media_read to view selected images. X uses a separately configured web session and returns post text, author, observed metrics and lazy media. Notifications resolve directly to selected comments/floors and parent context when available; unresolved or deleted content is explicit, never replaced by another reply. Runtime restores account and resolves object relationships. Media remains lazy.",
-            json!({"reference":{"type":"string"},"platform":provider,"account":account}),
+            "Open a Bilibili video, Tieba thread/forum_ref, X profile/post, Pixiv artwork, Reddit post, Discord guild/channel URL or personalized highlight target, or notification_ref. A Tieba forum_ref returns thread targets and a social_discover continuation so read-only roaming needs no provider-specific tool. Pixiv returns metadata and lazy image refs; use media_read to inspect images. Notifications resolve exact selected content; missing content never substitutes another item. Runtime restores account and object relationships. Media remains lazy.",
+            json!({"reference":{"type":"string"},"platform":provider,"limit":limit,"account":account}),
             &["reference"],
         ),
         tool(
@@ -111,8 +111,8 @@ pub fn specs() -> Vec<DynamicToolSpec> {
         ),
         tool(
             "social_discover",
-            "Discover Bilibili videos (default platform): source=recommended reads the saved account's homepage; source=popular (compatibility default) reads public popular videos. platform=reddit reads the signed-in Reddit homepage with post targets and pagination. platform=pixiv returns a safe-mode artwork recommendation snapshot with target_ref and lazy preview_media_ref; its pagination is unavailable. Bilibili recommendation refreshes are not stable pages; Runtime deduplicates continuation results. No automatic fallback or login. Media stays lazy.",
-            json!({"platform":{"type":"string","enum":["bilibili","pixiv","reddit"]},"source":{"type":"string","enum":["recommended","popular"]},"continuation":continuation,"limit":limit,"account":account}),
+            "Use action=sources to list saved-account feed_ref entry points locally, then read a feed_ref (default action=read), or platform plus source. recommended is default: Bilibili home, Tieba personalized home, X For You, Pixiv home or Reddit Best; Discord provides personalized Highlights notifications, not a home timeline. following is separate: followed authors/dynamics, Reddit subscriptions, Tieba followed forums or GitHub following/watched activity. Open returned targets directly; media stays lazy. Continuation restores source/account. Pixiv available_topics select real personalized tag sections, not searches. Legacy Bilibili popular is public and explicit. Login failures never substitute another source.",
+            json!({"action":{"type":"string","enum":["sources","read"]},"feed_ref":{"type":"string","description":"Opaque feed_ref from action=sources; restores platform, source and saved account."},"platform":{"type":"string","enum":["bilibili","tieba","x","pixiv","reddit","discord","github"]},"source":{"type":"string","enum":["recommended","popular","following"]},"topic":{"type":"string","maxLength":256},"continuation":continuation,"limit":limit,"account":account}),
             &[],
         ),
         tool(

@@ -96,6 +96,121 @@ pub struct User {
     pub id: String,
     pub name: String,
 }
+/// Only the account homepage's explicitly ordered recommendation section.
+/// `thumbnails.illust` is a shared index containing rankings and other modules.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct HomeRecommendations {
+    pub items: Vec<Value>,
+    pub available_topics: Vec<String>,
+    pub topic: Option<String>,
+}
+pub fn home_recommendations(raw: &Value, topic: Option<&str>) -> Result<HomeRecommendations> {
+    if topic.is_some_and(|v| v.is_empty() || v.len() > 256 || v.chars().any(char::is_control)) {
+        return Err(Error::InvalidInput);
+    }
+    let page = raw
+        .get("page")
+        .and_then(Value::as_object)
+        .ok_or(Error::ProtocolChanged)?;
+    let mut topics = Vec::new();
+    let mut selected = None;
+    if let Some(groups) = page.get("recommendByTag") {
+        let groups = groups.as_array().ok_or(Error::ProtocolChanged)?;
+        if groups.len() > 64 {
+            return Err(Error::Limit);
+        }
+        for group in groups {
+            let tag = group["tag"]
+                .as_str()
+                .filter(|v| !v.is_empty() && v.len() <= 256 && !v.chars().any(char::is_control))
+                .ok_or(Error::ProtocolChanged)?;
+            if topics.iter().any(|known| known == tag) {
+                return Err(Error::ProtocolChanged);
+            }
+            topics.push(tag.to_owned());
+            if topic == Some(tag) {
+                selected = Some(group);
+            }
+        }
+    }
+    let section = match topic {
+        None => page.get("recommend").ok_or(Error::ProtocolChanged)?,
+        Some(_) => selected.ok_or(Error::NotFound)?,
+    };
+    let ids = section["ids"].as_array().ok_or(Error::ProtocolChanged)?;
+    Ok(HomeRecommendations {
+        items: ordered_feed_items(raw, ids)?,
+        available_topics: topics,
+        topic: topic.map(str::to_owned),
+    })
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FollowingUpdates {
+    pub items: Vec<Value>,
+    pub next_page: Option<u32>,
+    pub provider_has_more: bool,
+}
+pub fn following_updates(raw: &Value, page: u32) -> Result<FollowingUpdates> {
+    if !(1..=100).contains(&page) {
+        return Err(Error::InvalidInput);
+    }
+    let ids = raw
+        .pointer("/page/ids")
+        .and_then(Value::as_array)
+        .ok_or(Error::ProtocolChanged)?;
+    let last = raw
+        .pointer("/page/isLastPage")
+        .and_then(Value::as_bool)
+        .ok_or(Error::ProtocolChanged)?;
+    Ok(FollowingUpdates {
+        items: ordered_feed_items(raw, ids)?,
+        next_page: (!last && page < 100).then_some(page + 1),
+        provider_has_more: !last,
+    })
+}
+fn ordered_feed_items(raw: &Value, ids: &[Value]) -> Result<Vec<Value>> {
+    use std::collections::{BTreeMap, BTreeSet};
+    let rows = raw
+        .pointer("/thumbnails/illust")
+        .and_then(Value::as_array)
+        .ok_or(Error::ProtocolChanged)?;
+    if ids.len() > 512 || rows.len() > 2048 {
+        return Err(Error::Limit);
+    }
+    let mut index = BTreeMap::new();
+    for row in rows {
+        if row["isAdContainer"] == true {
+            continue;
+        }
+        let key = row["id"].as_str().ok_or(Error::ProtocolChanged)?;
+        id(key)?;
+        if let Some(previous) = index.insert(key, row) {
+            if previous != row {
+                return Err(Error::ProtocolChanged);
+            }
+        }
+    }
+    let mut seen = BTreeSet::new();
+    let mut items = Vec::new();
+    for key in ids {
+        let key = key
+            .as_str()
+            .map(str::to_owned)
+            .or_else(|| key.as_u64().map(|v| v.to_string()))
+            .ok_or(Error::ProtocolChanged)?;
+        id(&key)?;
+        if !seen.insert(key.clone()) {
+            continue;
+        }
+        let row = *index.get(key.as_str()).ok_or(Error::ProtocolChanged)?;
+        // Keep the existing safe feed policy; missing flags never imply safe.
+        if row["xRestrict"].as_u64() != Some(0) || row["isMasked"] == true {
+            continue;
+        }
+        items.push(row.clone());
+    }
+    Ok(items)
+}
 impl User {
     pub fn validate(&self) -> Result<()> {
         id(&self.id)?;
@@ -192,6 +307,17 @@ impl Client {
         // The website accepts `all`; `safe` produces HTTP 400. The Runtime
         // retains only explicitly unrestricted entries before exposing a feed.
         self.ajax("/ajax/top/illust?mode=all&lang=en")
+    }
+    pub fn following(&self, page: u32) -> Result<FollowingUpdates> {
+        if !(1..=100).contains(&page) {
+            return Err(Error::InvalidInput);
+        }
+        following_updates(
+            &self.ajax(&format!(
+                "/ajax/follow_latest/illust?p={page}&mode=all&lang=en"
+            ))?,
+            page,
+        )
     }
     pub fn artwork(&self, artwork: &str) -> Result<Value> {
         id(artwork)?;
@@ -414,6 +540,67 @@ pub fn artwork_view(raw: &Value) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn followed_author_feed_uses_numeric_ordered_ids_and_explicit_last_page() {
+        let raw = json!({"page":{"ids":[3,1,3],"isLastPage":false},"thumbnails":{"illust":[{"id":"1","xRestrict":0},{"id":"3","xRestrict":0},{"id":"99","xRestrict":0}]}});
+        let page = following_updates(&raw, 1).unwrap();
+        assert_eq!(
+            page.items
+                .iter()
+                .map(|v| v["id"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["3", "1"]
+        );
+        assert_eq!(page.next_page, Some(2));
+        assert!(page.provider_has_more);
+        let mut last = raw.clone();
+        last["page"]["isLastPage"] = json!(true);
+        assert!(following_updates(&last, 2).unwrap().next_page.is_none());
+        assert!(
+            following_updates(&json!({"page":{"ids":[]},"thumbnails":{"illust":[]}}), 1).is_err()
+        );
+        assert!(following_updates(&raw, 101).is_err());
+    }
+    #[test]
+    fn homepage_uses_only_the_selected_personal_section_in_server_order() {
+        let raw = json!({"page":{"recommend":{"ids":["3","1","3","4"]},"recommendByTag":[{"tag":"space","ids":["2","3"]}]},"thumbnails":{"illust":[
+            {"id":"99","title":"ranking not a recommendation","xRestrict":0},
+            {"id":"1","xRestrict":0},{"id":"2","xRestrict":0},
+            {"id":"3","xRestrict":0},{"id":"4","xRestrict":1}
+        ]}});
+        let main = home_recommendations(&raw, None).unwrap();
+        assert_eq!(
+            main.items
+                .iter()
+                .map(|v| v["id"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["3", "1"]
+        );
+        assert_eq!(main.available_topics, vec!["space"]);
+        let topic = home_recommendations(&raw, Some("space")).unwrap();
+        assert_eq!(
+            topic
+                .items
+                .iter()
+                .map(|v| v["id"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["2", "3"]
+        );
+        assert_eq!(
+            home_recommendations(&raw, Some("arbitrary search")).unwrap_err(),
+            Error::NotFound
+        );
+        let mut missing = raw.clone();
+        missing["page"]["recommend"]["ids"] = json!(["100"]);
+        assert_eq!(
+            home_recommendations(&missing, None).unwrap_err(),
+            Error::ProtocolChanged
+        );
+        assert_eq!(
+            home_recommendations(&json!({"thumbnails":raw["thumbnails"]}), None).unwrap_err(),
+            Error::ProtocolChanged
+        );
+    }
     #[test]
     fn modern_identity_requires_logged_in_own_actor_not_a_public_creator() {
         let html = r#"<script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"isLoggedIn":true,"gaUserData":{"userId":"42","token":"synthetic-private"},"artist":{"userId":"99"}}}}</script>"#;

@@ -178,7 +178,9 @@ pub fn apply_default_account(profile: &ExecutionProfile, tool: &str, params: &mu
     {
         return;
     }
-    let platform = if tool == "social_tieba" || tool.starts_with("tieba_") {
+    let platform = if tool == "social_discover" && map.get("action").is_some_and(|v| v == "sources") {
+        map.get("platform").and_then(Value::as_str)
+    } else if tool == "social_tieba" || tool.starts_with("tieba_") {
         Some("tieba")
     } else if tool == "social_bilibili" || tool.starts_with("bilibili_") {
         Some("bilibili")
@@ -190,7 +192,7 @@ pub fn apply_default_account(profile: &ExecutionProfile, tool: &str, params: &mu
         tool,
         "social_search" | "social_discover" | "social_emotes" | "social_favorites"
     ) {
-        Some("bilibili")
+        map.get("platform").and_then(Value::as_str).or(Some("bilibili"))
     } else {
         map.get("platform")
             .or_else(|| map.get("latest_own"))

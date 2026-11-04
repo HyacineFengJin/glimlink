@@ -76,6 +76,30 @@ API 使用固定平台端点：帖子/楼中楼、吧主题列表、搜索、通
 
 新增功能通过 41 项 SDK 测试及 3 项宿主契约测试。2026-10-30 管理面实网只读验收：搜索返回 3 条真实结果及可用 continuation；没有执行平台写入。社区接口可能返回当前账号的风控限制，发布/图片上传的实际接受度仍需后续明确授权的实号测试。
 
+## 个性化首页推荐
+
+`Client::home_recommendations(page, count)` 显式使用当前账号 BDUSS 请求
+`/c/f/excellent/personalized?cmd=309264`，并非热门榜、搜索或关注吧列表。
+返回帖子、吧、作者、摘要及延迟媒体；不会运行浏览器或自动下载图片/视频。
+协议的 refresh/load-more 批次没有稳定游标或服务端结束标记，Runtime 保留
+本地批次尾部、绑定账号与来源并去重；不会因请求失败切换为匿名热门内容。
+
+字段来源为 TiebaLite 维护者的 [Personalized.proto](https://github.com/sanniou/Thread/blob/7d2a3a2aa4bc78a7129c03c7a09234ef24571f60/TiebaLite-4.0-dev/app/src/main/protos/Personalized.proto)
+与对应的 `PersonalizedRepository`、`OfficialProtobufTiebaApi`。本项目新增解析器为独立 Rust 实现；合成协议与宿主隔离测试不代表实号推荐质量已经验收。
+
+`Client::followed_forums()` 独立读取当前登录账号的 `like_forum`，
+固定使用 `/c/f/forum/forumGuide`（`sort_type=3,call_from=3,Subapp-Type: hybrid`）。
+协议依据为 aiotieba 的 [get_self_follow_forums](https://github.com/lumina37/aiotieba/blob/3922a9f1f4643f4652bc4a33f853e8aea29ffe24/src/aiotieba/api/get_self_follow_forums/_api.py)
+与 `_classdef.py`；不猜测 `followType`，不把 concern/userlike 的混合推荐流当作关注吧。
+
+Runtime 的 `source=following` 现为 **关注的吧**：先获取该账号自己的关注吧列表，
+再逐吧轮转读取 `forum_threads` 的最新帖排序，每次网络批次最多读取一个吧的20条帖。
+游标保存账号、关注吧快照、各吧页码、去重集合及未交付尾部；结果明确标注
+`tieba_followed_forums` / `followed_forums`，不是平台全局算法排序，也不混入默认首页。
+每帖包含吧信息、`forum_ref` 和只读 `social_open` 进入该吧的步骤。
+关注吧列表的服务端上限为200，达到上限时报告可能被截断；刷新才重新获取关注关系。
+旧“关注作者”来源的游标明确失效，不会悄悄改变原有语义。
+
 ## 互动通知
 
 `Client::notifications(NotificationKind::{Reply,At,Like}, page, limit)` 使用固定的`replyme/atme/agreeme`签名表单端点；`AuthClient::notifications(&mut Session, ...)` 可复用已有登录态。不会自动登录、翻页或发送已读确认。正文、对方、时间、帖子/楼层及分页均按实际字段返回；空引用ID保持None，必需帖子ID仍严格校验。被赞采用`agree_list/agreeer/op_time/thread_info`，未带正文时不生成假正文，媒体保留未展开标识。

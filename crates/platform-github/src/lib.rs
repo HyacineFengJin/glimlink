@@ -4,6 +4,7 @@
 //! Response strings (including Markdown and URLs) remain untrusted platform data.
 pub mod auth;
 mod actions;
+mod feeds;
 mod model;
 pub use actions::{CollaborationAction, ReviewLine};
 mod pagination;

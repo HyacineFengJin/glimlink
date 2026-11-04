@@ -5,6 +5,100 @@ use platform_tieba::{
     Client as TiebaClient, Comment, Config as TiebaConfig, Fragment, MediaKind, MediaResource,
     Post, ThreadId,
 };
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
+
+const HOME_CURSOR: &str = "task-tieba-home-cursor";
+const HOME_SEEN_LIMIT: usize = 512;
+const FOLLOWED_FORUMS_CURSOR: &str = "task-tieba-followed-forums";
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ForumProgress {
+    forum: platform_tieba::Forum,
+    page: u32,
+    has_more: bool,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FollowedForumsCursor {
+    schema: u32,
+    source: String,
+    forums: Vec<ForumProgress>,
+    index: usize,
+    seen: BTreeSet<u64>,
+    snapshot: Option<String>,
+    offset: usize,
+    batches: u32,
+    provider_list_may_be_capped: bool,
+}
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FollowedForumSnapshot {
+    forum: platform_tieba::Forum,
+    forum_ref: String,
+    items: Vec<Value>,
+    server_page: u32,
+    server_has_more: bool,
+}
+#[derive(Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HomeCursor {
+    source: String,
+    page: u32,
+    seen: BTreeSet<u64>,
+    snapshot: Option<String>,
+    offset: usize,
+    #[serde(default)]
+    native_page_tag: Option<String>,
+    #[serde(default)]
+    request_unix: u64,
+    #[serde(default)]
+    server_has_more: Option<bool>,
+}
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HomeSnapshot {
+    items: Vec<Value>,
+    server_item_count: usize,
+    omitted_live_count: usize,
+    #[serde(default)]
+    omitted_unverified_count: usize,
+}
+fn preview_fragments(input: Vec<Fragment>) -> Vec<Fragment> {
+    let mut characters = 640usize;
+    input
+        .into_iter()
+        .take(12)
+        .filter_map(|fragment| match fragment {
+            Fragment::Text { text } => {
+                let text: String = text.chars().take(characters).collect();
+                characters = characters.saturating_sub(text.chars().count());
+                (!text.is_empty()).then_some(Fragment::Text { text })
+            }
+            Fragment::Link { text, href } => {
+                let text: String = text.chars().take(characters).collect();
+                characters = characters.saturating_sub(text.chars().count());
+                Some(Fragment::Link {
+                    text,
+                    href: href.chars().take(512).collect(),
+                })
+            }
+            Fragment::Mention { text, user_id } => Some(Fragment::Mention {
+                text: text.chars().take(160).collect(),
+                user_id,
+            }),
+            Fragment::Media { resource, label } => Some(Fragment::Media {
+                resource,
+                label: label.chars().take(96).collect(),
+            }),
+            Fragment::Unsupported { kind, text, reason } => Some(Fragment::Unsupported {
+                kind,
+                text: text.chars().take(160).collect(),
+                reason: reason.chars().take(512).collect(),
+            }),
+        })
+        .collect()
+}
 
 pub(super) struct TiebaState {
     config: TiebaConfig,
@@ -76,6 +170,422 @@ fn post(
 }
 
 impl Runtime {
+    fn verify_tieba_feed_viewer(&self) -> Result<()> {
+        let path = super::auth::saved_session(&self.state, "tieba", &self.account)?
+            .ok_or("Tieba feed requires a saved personal session")?;
+        let mut session = platform_tieba::Session::load(&path).map_err(|e| e.to_string())?;
+        if self.tieba.config.bduss.as_deref() != Some(session.bduss()) {
+            return Err("Tieba feed client differs from the saved session".into());
+        }
+        platform_tieba::AuthClient::new()
+            .map_err(|e| e.to_string())?
+            .self_identity(&mut session)
+            .map_err(|e| e.to_string())?;
+        if self.tieba.config.bduss.as_deref() != Some(session.bduss()) {
+            return Err(
+                "Tieba feed session changed during viewer verification; refresh the connection"
+                    .into(),
+            );
+        }
+        Ok(())
+    }
+    pub(super) fn tieba_discover_matches(&self, params: &Value) -> bool {
+        params["platform"] == "tieba"
+            || params["continuation"].as_str().is_some_and(|reference| {
+                [HOME_CURSOR, FOLLOWED_FORUMS_CURSOR].iter().any(|kind| {
+                    self.locators
+                        .scope_for(kind, reference)
+                        .is_ok_and(|scope| scope.platform == Platform::Tieba)
+                })
+            })
+    }
+    pub(super) fn call_tieba_discover(&mut self, params: &Value) -> Result<Value> {
+        if params.get("platform").is_some_and(|value| value != "tieba") {
+            return Err("platform differs from the Tieba recommendation feed".into());
+        }
+        let count = number(params, "limit", 10)? as usize;
+        if !(1..=20).contains(&count) {
+            return Err("recommendation limit must be 1..20".into());
+        }
+        if let Some(reference) = params.get("continuation") {
+            let reference = reference
+                .as_str()
+                .ok_or("continuation must be a Runtime reference")?;
+            if let Ok(scope) = self.locators.scope_for(FOLLOWED_FORUMS_CURSOR, reference) {
+                super::tasks::check_account(params, &scope)?;
+                if scope.platform != Platform::Tieba
+                    || params.get("source").is_some_and(|v| v != "following")
+                {
+                    return Err(
+                        "source differs from the saved Tieba followed-forums continuation".into(),
+                    );
+                }
+                let cursor: FollowedForumsCursor =
+                    self.locators
+                        .get(&scope, FOLLOWED_FORUMS_CURSOR, reference)?;
+                return self.with_task_scope(&scope, |rt| {
+                    rt.tieba_followed_forums_page(cursor, count, false)
+                });
+            }
+            let scope = self.locators.scope_for(HOME_CURSOR, reference)?;
+            if scope.platform != Platform::Tieba {
+                return Err("not a Tieba recommendation continuation".into());
+            }
+            super::tasks::check_account(params, &scope)?;
+            let cursor: HomeCursor = self.locators.get(&scope, HOME_CURSOR, reference)?;
+            if cursor.source == "following" {
+                return Err("This following cursor used the old followed-author meaning; refresh the followed-forums feed".into());
+            }
+            if !matches!(cursor.source.as_str(), "recommended" | "following")
+                || params
+                    .get("source")
+                    .is_some_and(|source| source.as_str() != Some(cursor.source.as_str()))
+            {
+                return Err(
+                    "source differs from the saved Tieba recommendation continuation".into(),
+                );
+            }
+            return self.with_task_scope(&scope, |rt| rt.tieba_home_page(cursor, count));
+        }
+        let source = params
+            .get("source")
+            .map(|value| value.as_str().ok_or("discover source must be a string"))
+            .transpose()?
+            .unwrap_or("recommended");
+        if !matches!(source, "recommended" | "following") {
+            return Ok(
+                json!({"status":"unsupported","platform":"tieba","available_sources":["recommended","following"],"detail":"Choose the signed-in account's personalized homepage or posts from its verified followed forums."}),
+            );
+        }
+        self.with_platform_account("tieba", params, true, |rt| {
+            if source == "following" {
+                rt.verify_tieba_feed_viewer()?;
+                let followed = rt
+                    .tieba_client()?
+                    .followed_forums()
+                    .map_err(|e| e.to_string())?;
+                return rt.tieba_followed_forums_page(
+                    FollowedForumsCursor {
+                        schema: 1,
+                        source: "followed_forums".into(),
+                        forums: followed
+                            .forums
+                            .into_iter()
+                            .map(|forum| ForumProgress {
+                                forum,
+                                page: 1,
+                                has_more: true,
+                            })
+                            .collect(),
+                        index: 0,
+                        seen: BTreeSet::new(),
+                        snapshot: None,
+                        offset: 0,
+                        batches: 0,
+                        provider_list_may_be_capped: followed.provider_list_may_be_capped,
+                    },
+                    count,
+                    true,
+                );
+            }
+            rt.tieba_home_page(
+                HomeCursor {
+                    source: source.into(),
+                    page: 1,
+                    seen: BTreeSet::new(),
+                    snapshot: None,
+                    offset: 0,
+                    ..Default::default()
+                },
+                count,
+            )
+        })
+    }
+    fn tieba_followed_forums_page(
+        &mut self,
+        mut cursor: FollowedForumsCursor,
+        count: usize,
+        viewer_already_verified: bool,
+    ) -> Result<Value> {
+        if cursor.schema != 1
+            || cursor.source != "followed_forums"
+            || cursor.forums.len() > 200
+            || cursor.index > cursor.forums.len()
+            || cursor.offset > 20
+            || cursor.batches > 100
+            || cursor.seen.len() > HOME_SEEN_LIMIT
+            || !(1..=20).contains(&count)
+        {
+            return Err("invalid Tieba followed-forums continuation".into());
+        }
+        let mut forum_ids = BTreeSet::new();
+        for progress in &cursor.forums {
+            if progress.forum.id == 0
+                || progress.forum.id > i64::MAX as u64
+                || progress.forum.name.trim().is_empty()
+                || progress.forum.name.len() > 256
+                || progress.forum.name.chars().any(char::is_control)
+                || !(1..=100).contains(&progress.page)
+                || !forum_ids.insert(progress.forum.id)
+            {
+                return Err("invalid followed forum identity or page".into());
+            }
+        }
+        if cursor
+            .seen
+            .iter()
+            .any(|id| *id == 0 || *id > i64::MAX as u64)
+        {
+            return Err("invalid followed-forum seen thread".into());
+        }
+        let scope = self.scope(Platform::Tieba);
+        let followed_forum_count = cursor.forums.len();
+        if cursor.forums.is_empty() {
+            return Ok(
+                json!({"status":"ok","scope":scope,"items":[],"continuation":null,"has_more":false,"stop_reason":"no_followed_forums","context":{"source":"tieba_followed_forums","feed_kind":"followed_forums","followed_forum_count":0,"signed_in_request":true,"viewer_verified":viewer_already_verified,"cached":false,"personalization_verified":false,"ordering":"round_robin_forums_then_newest_posts","provider_list_may_be_capped":cursor.provider_list_may_be_capped},"media_downloaded":false}),
+            );
+        }
+        let cached = cursor.snapshot.is_some();
+        let fetched = if let Some(snapshot) = &cursor.snapshot {
+            let (_, path) = self.store.resolve(&scope, snapshot)?;
+            serde_json::from_slice::<FollowedForumSnapshot>(&read_bounded(&path, 2 * 1024 * 1024)?)
+                .map_err(|_| "invalid followed-forum snapshot")?
+        } else {
+            if cursor.offset != 0 {
+                return Err("invalid followed-forum snapshot offset".into());
+            }
+            let index = (0..cursor.forums.len())
+                .map(|n| (cursor.index + n) % cursor.forums.len())
+                .find(|&index| cursor.forums[index].has_more)
+                .ok_or("followed-forum continuation has no remaining page")?;
+            let progress = cursor.forums[index].clone();
+            if !viewer_already_verified {
+                self.verify_tieba_feed_viewer()?;
+            }
+            // One forum request per call. We never scan hundreds of forums to
+            // fill a model page or fall back to the recommendation stream.
+            let page = self
+                .tieba_client()?
+                .forum_threads(&progress.forum.name, progress.page, 20, 1, false)
+                .map_err(|e| e.to_string())?;
+            if page.forum.id != progress.forum.id
+                || (page.page.current_page != 0
+                    && page.page.current_page != u64::from(progress.page))
+            {
+                return Err("followed forum response identity/page differs".into());
+            }
+            if page.threads.len() > 20 {
+                return Err("followed forum page exceeds item bound".into());
+            }
+            cursor.forums[index].has_more = page.page.has_more && progress.page < 100;
+            if cursor.forums[index].has_more {
+                cursor.forums[index].page += 1;
+            }
+            cursor.index = (index + 1) % cursor.forums.len();
+            cursor.batches += 1;
+            let forum_ref = self
+                .locators
+                .put_reusable(&scope, "task-tieba-forum", &page.forum)?;
+            let mut assets = self.locators.batch();
+            let mut items = Vec::new();
+            let mut batch_seen = BTreeSet::new();
+            for item in page.threads {
+                if cursor.seen.contains(&item.thread_id.0) || !batch_seen.insert(item.thread_id.0) {
+                    continue;
+                }
+                let target = assets.put(
+                    &scope,
+                    "task-target",
+                    &super::tasks::TaskTarget::Thread {
+                        thread: item.thread_id.0.to_string(),
+                    },
+                )?;
+                let content = fragments(&preview_fragments(item.fragments), &scope, &mut assets)?;
+                items.push(json!({"id":item.thread_id.0.to_string(),"thread_id":item.thread_id.0,"title":item.title,"author":item.author,"forum":page.forum,"forum_ref":forum_ref,"forum_open":{"tool":"social_open","args":{"reference":forum_ref}},"counts":{"replies":item.reply_count,"views":item.view_count},"created_at":item.created_at,"pinned":item.pinned,"featured":item.featured,"fragments":content,"excerpt_only":true,"target_ref":target,"open_tool":"social_open","media_downloaded":false}));
+            }
+            assets.commit();
+            FollowedForumSnapshot {
+                forum: page.forum,
+                forum_ref,
+                items,
+                server_page: progress.page,
+                server_has_more: page.page.has_more,
+            }
+        };
+        if !forum_ids.contains(&fetched.forum.id)
+            || fetched.items.len() > 20
+            || cursor.offset > fetched.items.len()
+        {
+            return Err("followed-forum snapshot is outside the saved follow list".into());
+        }
+        let forum: platform_tieba::Forum =
+            self.locators
+                .get(&scope, "task-tieba-forum", &fetched.forum_ref)?;
+        if forum.id != fetched.forum.id {
+            return Err("followed-forum snapshot reference differs".into());
+        }
+        let remaining = HOME_SEEN_LIMIT.saturating_sub(cursor.seen.len());
+        let end = cursor
+            .offset
+            .saturating_add(count.min(remaining))
+            .min(fetched.items.len());
+        let items = fetched.items[cursor.offset..end].to_vec();
+        for item in &items {
+            let id = item["thread_id"]
+                .as_u64()
+                .filter(|id| *id > 0 && *id <= i64::MAX as u64)
+                .ok_or("invalid cached followed-forum thread")?;
+            if item["forum"]["id"].as_u64() != Some(fetched.forum.id)
+                || item["forum_ref"].as_str() != Some(fetched.forum_ref.as_str())
+            {
+                return Err("cached thread differs from its followed forum".into());
+            }
+            cursor.seen.insert(id);
+        }
+        let tail = end < fetched.items.len();
+        let can_continue = cursor.seen.len() < HOME_SEEN_LIMIT
+            && (tail || (cursor.batches < 100 && cursor.forums.iter().any(|v| v.has_more)));
+        let continuation = if can_continue {
+            if tail {
+                if cursor.snapshot.is_none() {
+                    let bytes = serde_json::to_vec(&fetched)
+                        .map_err(|_| "cannot encode followed-forum page")?;
+                    cursor.snapshot = Some(
+                        self.store
+                            .import(
+                                &scope,
+                                "tieba-followed-forum-page",
+                                "application/json",
+                                &mut bytes.as_slice(),
+                            )?
+                            .id,
+                    );
+                }
+                cursor.offset = end;
+            } else {
+                cursor.snapshot = None;
+                cursor.offset = 0;
+            }
+            Some(self.locators.put(&scope, FOLLOWED_FORUMS_CURSOR, &cursor)?)
+        } else {
+            None
+        };
+        Ok(
+            json!({"status":"ok","scope":scope,"items":items,"continuation":continuation,"has_more":can_continue,"stop_reason":if can_continue{"followed_forum_page_ready"}else if cursor.seen.len()>=HOME_SEEN_LIMIT||cursor.batches>=100{"cursor_budget"}else{"followed_forums_exhausted"},"context":{"source":"tieba_followed_forums","feed_kind":"followed_forums","signed_in_request":true,"viewer_verified":!cached,"personalization_verified":false,"followed_forum_verified":true,"membership_snapshot":true,"followed_forum_count":followed_forum_count,"provider_list_may_be_capped":cursor.provider_list_may_be_capped,"ordering":"round_robin_forums_then_newest_posts","forum":fetched.forum,"forum_ref":fetched.forum_ref,"next":{"tool":"social_open","args":{"reference":fetched.forum_ref}},"server_page":fetched.server_page,"server_has_more":fetched.server_has_more,"cached":cached,"pagination_kind":"followed_forum_round_robin_with_cached_tails","pagination_note":"Only forums from this account's own like_forum list are read. Each network batch reads one followed forum's newest-post page, then rotates to the next forum. This is not a global recommendation ranking. Use the returned social_open step to explore that forum; refresh starts a new follow-list snapshot."},"media_downloaded":false}),
+        )
+    }
+    fn tieba_home_page(&mut self, mut cursor: HomeCursor, count: usize) -> Result<Value> {
+        if cursor.source != "recommended"
+            || !(1..=100).contains(&cursor.page)
+            || cursor.seen.len() > HOME_SEEN_LIMIT
+            || cursor.offset > 100
+            || cursor
+                .seen
+                .iter()
+                .any(|id| *id == 0 || *id > i64::MAX as u64)
+        {
+            return Err("invalid Tieba recommendation continuation".into());
+        }
+        let scope = self.scope(Platform::Tieba);
+        let cached = cursor.snapshot.is_some();
+        let fetched = if let Some(snapshot) = &cursor.snapshot {
+            let (_, path) = self.store.resolve(&scope, snapshot)?;
+            serde_json::from_slice::<HomeSnapshot>(&read_bounded(&path, 2 * 1024 * 1024)?)
+                .map_err(|_| "invalid Tieba recommendation snapshot")?
+        } else {
+            if cursor.offset != 0 {
+                return Err("invalid Tieba recommendation offset".into());
+            }
+            self.verify_tieba_feed_viewer()?;
+            let page = self
+                .tieba_client()?
+                .home_recommendations(cursor.page, 20)
+                .map_err(|e| e.to_string())?;
+            let (entries, server_item_count, omitted_live_count, omitted_unverified_count) = (
+                page.items,
+                page.server_item_count,
+                page.omitted_live_count,
+                0,
+            );
+            let mut assets = self.locators.batch();
+            let mut items = Vec::new();
+            for item in entries {
+                if cursor.seen.contains(&item.thread_id.0) {
+                    continue;
+                }
+                let target = assets.put(
+                    &scope,
+                    "task-target",
+                    &super::tasks::TaskTarget::Thread {
+                        thread: item.thread_id.0.to_string(),
+                    },
+                )?;
+                let preview = preview_fragments(item.fragments);
+                let content = fragments(&preview, &scope, &mut assets)?;
+                items.push(json!({"id":item.thread_id.0.to_string(),"thread_id":item.thread_id.0,"title":item.title,"author":item.author,"forum":item.forum,"counts":{"replies":item.reply_count,"views":item.view_count,"likes":item.like_count},"created_at":item.created_at,"provider_source":item.provider_source,"fragments":content,"excerpt_only":true,"target_ref":target,"open_tool":"social_open","media_downloaded":false}));
+            }
+            assets.commit();
+            HomeSnapshot {
+                items,
+                server_item_count,
+                omitted_live_count,
+                omitted_unverified_count,
+            }
+        };
+        if fetched.items.len() > 100 || cursor.offset > fetched.items.len() {
+            return Err("invalid Tieba recommendation snapshot bounds".into());
+        }
+        let remaining = HOME_SEEN_LIMIT.saturating_sub(cursor.seen.len());
+        let end = (cursor.offset + count.min(remaining)).min(fetched.items.len());
+        let cached_tail_remaining = end < fetched.items.len();
+        let items = fetched.items[cursor.offset..end].to_vec();
+        for item in &items {
+            let id = item["thread_id"]
+                .as_u64()
+                .filter(|id| *id > 0 && *id <= i64::MAX as u64)
+                .ok_or("invalid cached Tieba thread")?;
+            cursor.seen.insert(id);
+        }
+        let can_fetch_more = cursor.page < 100 && !items.is_empty();
+        let can_continue =
+            cursor.seen.len() < HOME_SEEN_LIMIT && (cached_tail_remaining || can_fetch_more);
+        let continuation = if can_continue {
+            if end < fetched.items.len() {
+                if cursor.snapshot.is_none() {
+                    let bytes = serde_json::to_vec(&fetched).map_err(|e| e.to_string())?;
+                    let snapshot = self.store.import(
+                        &scope,
+                        "tieba-home-batch",
+                        "application/json",
+                        &mut bytes.as_slice(),
+                    )?;
+                    cursor.snapshot = Some(snapshot.id);
+                }
+                cursor.offset = end;
+            } else {
+                cursor.page += 1;
+                cursor.snapshot = None;
+                cursor.offset = 0;
+            }
+            Some(self.locators.put(&scope, HOME_CURSOR, &cursor)?)
+        } else {
+            None
+        };
+        let stop_reason = if can_continue {
+            "batch_ready"
+        } else if cursor.seen.len() >= HOME_SEEN_LIMIT {
+            "deduplication_budget"
+        } else if cursor.page >= 100 {
+            "batch_budget"
+        } else {
+            "empty_or_repeated_batch"
+        };
+        let context = json!({"source":"tieba_home_personalized","feed_kind":"account_home_recommendations","signed_in_request":true,"viewer_verified":!cached,"cached":cached,"personalization_verified":false,"followed_author_verified":false,"server_has_more":cursor.server_has_more,"server_item_count":fetched.server_item_count,"omitted_live_count":fetched.omitted_live_count,"omitted_unverified_count":fetched.omitted_unverified_count,"pagination_kind":"refresh_load_more_batches","pagination_note":"The provider exposes refresh/load-more batches without a stable cursor or end indicator. Runtime preserves local batch tails and deduplicates seen threads; continuation is a bounded attempt, not proof of another server page."});
+        Ok(
+            json!({"status":"ok","scope":scope,"items":items,"continuation":continuation,"has_more":if !can_continue {json!(false)} else if cached_tail_remaining {json!(true)} else {Value::Null},"new_item_count":items.len(),"stop_reason":stop_reason,"context":context,"media_downloaded":false}),
+        )
+    }
+
     pub(super) fn tieba_client(&mut self) -> Result<&TiebaClient> {
         if self.tieba.client.is_none() {
             self.tieba.client =
@@ -217,6 +727,278 @@ impl Runtime {
 #[cfg(test)]
 mod projection_tests {
     use super::*;
+    #[test]
+    fn followed_forum_pages_are_membership_bound_cached_and_openable_without_network() {
+        let root = std::env::temp_dir().join(format!(
+            "tieba-followed-forum-contract-{}",
+            std::process::id()
+        ));
+        private_dir(&root).unwrap();
+        let mut runtime = Runtime::open(&root, "public", None).unwrap();
+        let scope = Scope {
+            platform: Platform::Tieba,
+            account: "alice".into(),
+        };
+        let forum = platform_tieba::Forum {
+            id: 7,
+            name: "Synthetic followed forum".into(),
+        };
+        let forum_ref = runtime
+            .locators
+            .put_reusable(&scope, "task-tieba-forum", &forum)
+            .unwrap();
+        let mut items = Vec::new();
+        for thread in [42u64, 43, 44] {
+            let target = runtime
+                .locators
+                .put(
+                    &scope,
+                    "task-target",
+                    &super::super::tasks::TaskTarget::Thread {
+                        thread: thread.to_string(),
+                    },
+                )
+                .unwrap();
+            items.push(
+                json!({"thread_id":thread,"forum":forum,"forum_ref":forum_ref,"target_ref":target}),
+            );
+        }
+        let snapshot = FollowedForumSnapshot {
+            forum: forum.clone(),
+            forum_ref: forum_ref.clone(),
+            items,
+            server_page: 1,
+            server_has_more: false,
+        };
+        let bytes = serde_json::to_vec(&snapshot).unwrap();
+        let stored = runtime
+            .store
+            .import(
+                &scope,
+                "synthetic-followed-forum-page",
+                "application/json",
+                &mut bytes.as_slice(),
+            )
+            .unwrap();
+        let cursor = FollowedForumsCursor {
+            schema: 1,
+            source: "followed_forums".into(),
+            forums: vec![ForumProgress {
+                forum: forum.clone(),
+                page: 1,
+                has_more: false,
+            }],
+            index: 0,
+            seen: BTreeSet::new(),
+            snapshot: Some(stored.id.clone()),
+            offset: 0,
+            batches: 1,
+            provider_list_may_be_capped: false,
+        };
+        let reference = runtime
+            .locators
+            .put(&scope, FOLLOWED_FORUMS_CURSOR, &cursor)
+            .unwrap();
+        assert!(runtime.tieba_discover_matches(&json!({"continuation":reference})));
+        for params in [
+            json!({"continuation":reference,"source":"recommended"}),
+            json!({"continuation":reference,"account":"bob"}),
+            json!({"continuation":reference,"platform":"bilibili"}),
+        ] {
+            assert!(runtime.call_tieba_discover(&params).is_err());
+        }
+        let first = runtime
+            .call_tieba_discover(&json!({"continuation":reference,"limit":1}))
+            .unwrap();
+        assert_eq!(first["items"][0]["thread_id"], 42);
+        assert_eq!(
+            first["has_more"], true,
+            "cached tail survives the forum provider end"
+        );
+        assert_eq!(first["context"]["source"], "tieba_followed_forums");
+        assert_eq!(first["context"]["feed_kind"], "followed_forums");
+        assert_eq!(first["context"]["viewer_verified"], false);
+        assert_eq!(first["context"]["cached"], true);
+        assert_eq!(first["context"]["next"]["tool"], "social_open");
+        assert_eq!(first["context"]["next"]["args"]["reference"], forum_ref);
+        let next: FollowedForumsCursor = runtime
+            .locators
+            .get(
+                &scope,
+                FOLLOWED_FORUMS_CURSOR,
+                first["continuation"].as_str().unwrap(),
+            )
+            .unwrap();
+        assert_eq!(next.index, 0);
+        assert_eq!(next.forums[0].forum.id, 7);
+        let last = runtime
+            .call_tieba_discover(&json!({"continuation":first["continuation"],"limit":20}))
+            .unwrap();
+        assert_eq!(
+            last["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v["thread_id"].as_u64().unwrap())
+                .collect::<Vec<_>>(),
+            vec![43, 44]
+        );
+        assert_eq!(last["has_more"], false);
+        assert!(last["continuation"].is_null());
+        let wrong = FollowedForumsCursor {
+            forums: vec![ForumProgress {
+                forum: platform_tieba::Forum {
+                    id: 99,
+                    name: "Not followed".into(),
+                },
+                page: 1,
+                has_more: false,
+            }],
+            ..cursor
+        };
+        let wrong = runtime
+            .locators
+            .put(&scope, FOLLOWED_FORUMS_CURSOR, &wrong)
+            .unwrap();
+        assert!(
+            runtime
+                .call_tieba_discover(&json!({"continuation":wrong}))
+                .unwrap_err()
+                .contains("outside the saved follow list")
+        );
+        assert_eq!(runtime.account, "public");
+        assert!(!root.join("outbox").exists());
+        drop(runtime);
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn home_continuation_preserves_cached_tail_and_rejects_retargeting_without_network() {
+        let root = std::env::temp_dir().join(format!(
+            "tieba-home-continuation-{}-{}",
+            std::process::id(),
+            crate::outbox::now().unwrap()
+        ));
+        private_dir(&root).unwrap();
+        let mut runtime = Runtime::open(&root, "public", None).unwrap();
+        let scope = Scope {
+            platform: Platform::Tieba,
+            account: "alice".into(),
+        };
+        let mut items = Vec::new();
+        for thread in [42, 43, 44] {
+            let target = runtime
+                .locators
+                .put(
+                    &scope,
+                    "task-target",
+                    &super::super::tasks::TaskTarget::Thread {
+                        thread: thread.to_string(),
+                    },
+                )
+                .unwrap();
+            items.push(json!({"id":thread.to_string(),"thread_id":thread,"target_ref":target}));
+        }
+        let data = HomeSnapshot {
+            items,
+            server_item_count: 3,
+            omitted_live_count: 0,
+            omitted_unverified_count: 0,
+        };
+        let bytes = serde_json::to_vec(&data).unwrap();
+        let snapshot = runtime
+            .store
+            .import(
+                &scope,
+                "synthetic-home-batch",
+                "application/json",
+                &mut bytes.as_slice(),
+            )
+            .unwrap();
+        let reference = runtime
+            .locators
+            .put(
+                &scope,
+                HOME_CURSOR,
+                &HomeCursor {
+                    source: "recommended".into(),
+                    page: 1,
+                    seen: BTreeSet::new(),
+                    snapshot: Some(snapshot.id),
+                    offset: 0,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(runtime.tieba_discover_matches(&json!({"continuation":reference})));
+        assert!(
+            runtime
+                .call_tieba_discover(&json!({"continuation":reference,"source":"following"}))
+                .unwrap_err()
+                .contains("source differs")
+        );
+        assert!(
+            runtime
+                .call_tieba_discover(&json!({"continuation":reference,"account":"bob"}))
+                .unwrap_err()
+                .contains("account differs")
+        );
+        assert!(
+            runtime
+                .call_tieba_discover(&json!({"continuation":reference,"platform":"bilibili"}))
+                .is_err()
+        );
+        let first = runtime
+            .call_tieba_discover(&json!({"continuation":reference,"limit":1}))
+            .unwrap();
+        assert_eq!(first["scope"]["account"], "alice");
+        assert_eq!(first["items"][0]["thread_id"], 42);
+        assert_eq!(first["has_more"], true);
+        assert_eq!(first["context"]["server_has_more"], Value::Null);
+        assert_eq!(first["context"]["source"], "tieba_home_personalized");
+        assert_eq!(first["context"]["viewer_verified"], false);
+        assert_eq!(first["context"]["cached"], true);
+        assert_eq!(
+            runtime
+                .load_task_target(first["items"][0]["target_ref"].as_str().unwrap())
+                .unwrap()
+                .0,
+            scope
+        );
+        let second = runtime
+            .call_tieba_discover(&json!({"continuation":first["continuation"],"limit":1}))
+            .unwrap();
+        assert_eq!(second["items"][0]["thread_id"], 43);
+        let old_following = runtime
+            .locators
+            .put(
+                &scope,
+                HOME_CURSOR,
+                &HomeCursor {
+                    source: "following".into(),
+                    page: 1,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(
+            runtime
+                .call_tieba_discover(&json!({"continuation":old_following}))
+                .unwrap_err()
+                .contains("old followed-author meaning")
+        );
+        assert_eq!(
+            runtime.account, "public",
+            "continuation must restore the caller account"
+        );
+        assert_eq!(
+            runtime
+                .call_tieba_discover(&json!({"source":"popular"}))
+                .unwrap()["status"],
+            "unsupported"
+        );
+        drop(runtime);
+        fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn native_child_projection_returns_exact_account_bound_reply_tool_input() {
         let root = std::env::temp_dir().join(format!(

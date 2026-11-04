@@ -451,13 +451,51 @@ pub(crate) fn timeline_response(
 ) -> Result<TimelinePage> {
     check_errors(v)?;
     let ins = instructions(v).ok_or(Error::ProtocolChanged)?;
-    let mut page = TimelinePage {
-        timeline_kind: if v.pointer("/data/user_result_by_screen_name").is_some() {
+    timeline_instructions(
+        ins,
+        previous,
+        limit,
+        if v.pointer("/data/user_result_by_screen_name").is_some() {
             "original_posts"
         } else {
             "posts"
-        }
-        .into(),
+        },
+    )
+}
+pub(crate) fn home_response(
+    v: &Value,
+    recommended: bool,
+    previous: Option<&str>,
+    limit: usize,
+) -> Result<TimelinePage> {
+    check_errors(v)?;
+    let modern = if recommended {
+        "/data/home_timeline/home_timeline_urt/instructions"
+    } else {
+        "/data/home_latest_timeline/home_timeline_urt/instructions"
+    };
+    let ins = [modern, "/data/home/home_timeline_urt/instructions"]
+        .iter()
+        .find_map(|path| v.pointer(path).and_then(Value::as_array))
+        .ok_or(Error::ProtocolChanged)?;
+    timeline_instructions(
+        ins,
+        previous,
+        limit,
+        if recommended { "for_you" } else { "following" },
+    )
+}
+fn timeline_instructions(
+    ins: &[Value],
+    previous: Option<&str>,
+    limit: usize,
+    kind: &str,
+) -> Result<TimelinePage> {
+    if ins.len() > 128 || !(1..=100).contains(&limit) {
+        return Err(Error::Limit);
+    }
+    let mut page = TimelinePage {
+        timeline_kind: kind.into(),
         items: Vec::new(),
         pinned: Vec::new(),
         next_cursor: None,
@@ -508,9 +546,14 @@ pub(crate) fn timeline_response(
                 page.server_next_cursor = s(entry, &["/content/value"]).filter(|s| s.len() <= 4096);
                 continue;
             }
-            if entry
-                .pointer("/content/itemContent/promotedMetadata")
-                .is_some()
+            if [
+                "/content/itemContent/promotedMetadata",
+                "/content/content/promotedMetadata",
+                "/item/itemContent/promotedMetadata",
+                "/item/content/promotedMetadata",
+            ]
+            .iter()
+            .any(|path| entry.pointer(path).is_some_and(|v| !v.is_null()))
             {
                 continue;
             }

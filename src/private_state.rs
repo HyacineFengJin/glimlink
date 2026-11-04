@@ -480,10 +480,18 @@ impl PrivateLocators {
         Ok(record.value)
     }
     pub fn scope_for(&self, kind: &str, id: &str) -> Result<Scope> {
-        let record: Record<serde_json::Value> = self.read_record(id)?;
+        let record: Record<serde::de::IgnoredAny> = self.read_record(id)?;
         if record.kind != kind {
             return Err("private reference kind mismatch".into());
         }
+        record.scope.validate()?;
+        check_time(&record.kind, record.created_at, now()?)?;
+        Ok(record.scope)
+    }
+    /// Routing may inspect ownership before choosing a platform adapter.
+    /// Adapters still validate the reference kind before reading its value.
+    pub fn scope_for_reference(&self, id: &str) -> Result<Scope> {
+        let record: Record<serde::de::IgnoredAny> = self.read_record(id)?;
         record.scope.validate()?;
         check_time(&record.kind, record.created_at, now()?)?;
         Ok(record.scope)

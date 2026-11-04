@@ -13,6 +13,8 @@ pub(crate) enum OperationKind {
     UserId,
     Tweet,
     Timeline,
+    HomeRecommended,
+    HomeFollowing,
 }
 #[derive(Clone)]
 pub(crate) struct Operation {
@@ -145,6 +147,8 @@ impl WebState {
                 OperationKind::UserId => &[],
                 OperationKind::Tweet => &["retweet-"],
                 OperationKind::Timeline => &["user-posts-"],
+                OperationKind::HomeRecommended => &["for-you-preload-"],
+                OperationKind::HomeFollowing => &["following-preload-"],
             };
             self.fetch_prefixes(transport, prefixes)?;
             if kind == OperationKind::Timeline && !self.operations.contains_key(&kind) {
@@ -197,7 +201,7 @@ impl WebState {
     fn scan_operations(&mut self, script: &str) -> Result<()> {
         if self.modern {
             for c in regex(r#"params:\{id:["'`]([A-Za-z0-9_-]{8,128})["'`],metadata:\{[^}]{0,512}\},name:["'`]([A-Za-z0-9_]+)["'`],operationKind:["'`]query["'`]"#)?.captures_iter(script) {
-                let kind=match &c[2]{"UserByScreenName"=>OperationKind::UserName,"userIdRedirectQuery"=>OperationKind::UserId,"TweetResultByRestId"=>OperationKind::Tweet,"UserOriginalsTimeline"=>OperationKind::Timeline,_=>continue};
+                let kind=match &c[2]{"UserByScreenName"=>OperationKind::UserName,"userIdRedirectQuery"=>OperationKind::UserId,"TweetResultByRestId"=>OperationKind::Tweet,"UserOriginalsTimeline"=>OperationKind::Timeline,"HomeTimelineQuery"=>OperationKind::HomeRecommended,"HomeLatestTimelineQuery"=>OperationKind::HomeFollowing,_=>continue};
                 let end=c.get(0).ok_or(Error::ProtocolChanged)?.start();
                 let start=script[..end].rfind("=(function(){").unwrap_or(end);
                 let own=&script[start..end];let mut providers=BTreeMap::new();
@@ -217,6 +221,8 @@ impl WebState {
                     "UserByRestId" => OperationKind::UserId,
                     "TweetDetail" => OperationKind::Tweet,
                     "UserTweets" => OperationKind::Timeline,
+                    "HomeTimeline" => OperationKind::HomeRecommended,
+                    "HomeLatestTimeline" => OperationKind::HomeFollowing,
                     _ => continue,
                 };
                 let end = c.get(0).ok_or(Error::ProtocolChanged)?.end();
@@ -761,8 +767,49 @@ mod tests {
         ));
     }
     #[test]
+    fn relay_home_operations_are_discovered_from_query_definitions_not_profile_names() {
+        use base64::Engine;
+        let key = base64::engine::general_purpose::STANDARD.encode([0u8; 32]);
+        let row = "C 50,200 237,161 221,130 h 68 s 47,29 101,209 ";
+        let html = format!(
+            "<meta name='twitter-site-verification' content='{key}'><svg id='loading-x-anim-0'><g><path d='unused'/><path d='M 10,30 {}'/></g></svg>",
+            row.repeat(16)
+        );
+        let mut state = WebState {
+            transaction: Transaction::from_pages(&html, "(a[0],16)(a[1],16)").unwrap(),
+            operations: BTreeMap::new(),
+            assets: BTreeSet::new(),
+            fetched: BTreeSet::new(),
+            flags: BTreeMap::new(),
+            bytes: 0,
+            modern: true,
+        };
+        state.scan_operations("var q=(function(){var local={kind:`LocalArgument`,name:`__relay_internal__pv__xclientsfeaturesappviewerisloggedinrelayprovider`};return{params:{id:`aaaaaaaaaaaaaaaaaaaaaa`,metadata:{},name:`HomeTimelineQuery`,operationKind:`query`}}})();var f=(function(){return{params:{id:`bbbbbbbbbbbbbbbbbbbbbb`,metadata:{},name:`HomeLatestTimelineQuery`,operationKind:`query`}}})();").unwrap();
+        let home = state
+            .operations
+            .get(&OperationKind::HomeRecommended)
+            .unwrap();
+        assert_eq!(home.name, "HomeTimelineQuery");
+        assert!(home.modern);
+        let mut vars = json!({});
+        home.provided_variables(&mut vars);
+        assert_eq!(
+            vars["__relay_internal__pv__xclientsfeaturesappviewerisloggedinrelayprovider"],
+            true
+        );
+        assert_eq!(
+            state
+                .operations
+                .get(&OperationKind::HomeFollowing)
+                .unwrap()
+                .name,
+            "HomeLatestTimelineQuery"
+        );
+        assert!(!state.operations.contains_key(&OperationKind::Timeline));
+    }
+    #[test]
     #[ignore = "optional offline public-document corpus, never requests an account"]
-    fn public_source_corpus_has_all_four_read_operations() {
+    fn public_source_corpus_has_profile_and_home_read_operations() {
         let root = std::path::PathBuf::from(
             std::env::var_os("X_PUBLIC_CORPUS").expect("explicit public corpus path"),
         );
@@ -797,6 +844,8 @@ mod tests {
             OperationKind::UserId,
             OperationKind::Tweet,
             OperationKind::Timeline,
+            OperationKind::HomeRecommended,
+            OperationKind::HomeFollowing,
         ] {
             assert!(state.operations.contains_key(&kind));
         }

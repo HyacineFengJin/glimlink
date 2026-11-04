@@ -92,17 +92,18 @@ impl Runtime {
                     serde_json::to_value(data).map_err(|e| e.to_string())?,
                 )
             }
-            "bilibili.dynamics" => {
+            "bilibili.dynamics" | "bilibili.following" => {
                 let mid = number(params, "mid", 0)?;
                 let offset = match params.get("offset") {
                     None => None,
                     Some(v) => Some(v.as_str().ok_or("offset must be an opaque string")?),
                 };
-                let data = self
-                    .bili
-                    .uploader_dynamics(mid, offset, page_limit(params)?)
-                    .map_err(|e| e.to_string())?;
-                self.cache_bili_dynamic_page(serde_json::to_value(data).map_err(|e| e.to_string())?)
+                let data = if method == "bilibili.following" {
+                    self.bili.following_dynamics(offset, page_limit(params)?).map_err(|e| e.to_string())?
+                } else {
+                    serde_json::to_value(self.bili.uploader_dynamics(mid, offset, page_limit(params)?).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?
+                };
+                self.cache_bili_dynamic_page(data)
             }
             "bilibili.context" => {
                 let id: VideoId = required_str(params, "video")?

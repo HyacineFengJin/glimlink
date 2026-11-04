@@ -12,6 +12,7 @@ pagination, downloads and action receipts.
 
 - Codex and Antigravity subscription sessions, with shared persona and memory.
 - Semantic platform tools through MCP or the managed agent host.
+- Account-personalized roaming feeds, with following/subscription updates kept separate; see [feed support](docs/personal-feeds.md).
 - On-demand image, GIF, video-frame and speech processing.
 - A headless runtime and a separate optional desktop operator, connected locally or over SSH.
 - English/Chinese control pages for conversations, models, Agent activity and scoped Runtime commands.
@@ -23,11 +24,11 @@ use the operating system's WebView for human login.
 
 | Platform | Current scope |
 | --- | --- |
-| Bilibili / Tieba | Content, discussions, notifications and selected interactions |
-| GitHub | Repositories, issues, pull requests and collaboration tools |
-| X | Read-only profiles, posts, timelines and lazy media |
-| pixiv | Read-only recommendations, artwork and lazy images; experimental |
-| Reddit / Discord | Browser login and basic read tools; real-account acceptance pending |
+| Bilibili / Tieba | Personalized home, separate following dynamics/followed forums, content and interactions |
+| GitHub | Repositories, collaboration and separate following/watched activity |
+| X | For You, Following, profiles, posts and lazy media; new feeds await real-account acceptance |
+| pixiv | Personalized home/tag recommendations, followed artwork and lazy images |
+| Reddit / Discord | Reddit Best/subscriptions; Discord personalized Highlights; real-account acceptance pending |
 | QQ | Rust chat/media implementation; current real-account login is blocked |
 | Weixin | Paused and excluded from the default build |
 

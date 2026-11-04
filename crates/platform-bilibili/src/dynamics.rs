@@ -126,6 +126,40 @@ impl Client {
             limit,
         )
     }
+
+    /// The signed-in viewer's Following dynamics, separate from homepage
+    /// recommendations and from a selected uploader's public space feed.
+    pub fn following_dynamics(&self, offset: Option<&str>, limit: u32) -> Result<Value> {
+        let viewer = self.current_user()?;
+        let url = following_url(offset, limit)?;
+        let mut raw = api_data(self.transport.json(&url)?, false)?;
+        let mut omitted = 0usize;
+        if let Some(items) = raw["items"].as_array_mut() {
+            items.retain(|item| {
+                let promoted = item["type"] == "DYNAMIC_TYPE_AD"
+                    || item.pointer("/modules/module_tag/text").and_then(Value::as_str).is_some_and(|s| s.contains("推荐") || s.contains("广告"));
+                if promoted { omitted += 1; }
+                !promoted
+            });
+        }
+        let mut page = serde_json::to_value(parse_feed(raw, viewer.mid, offset, limit)?)
+            .map_err(|_| Error::InvalidJson)?;
+        page.as_object_mut().unwrap().remove("owner_mid");
+        page["viewer_mid"] = serde_json::json!(viewer.mid);
+        page["source"] = serde_json::json!("bilibili_following_dynamics");
+        page["recommendation_kind"] = serde_json::json!("following_activity");
+        page["signed_in_request"] = serde_json::json!(true);
+        page["viewer_verified"] = serde_json::json!(true);
+        page["omitted_promoted_items"] = serde_json::json!(omitted);
+        Ok(page)
+    }
+}
+
+fn following_url(offset: Option<&str>, limit: u32) -> Result<String> {
+    if !(1..=20).contains(&limit) { return Err(Error::InvalidPage); }
+    let offset = offset.unwrap_or("");
+    valid_offset(offset)?;
+    Ok(format!("https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/all?type=all&offset={}&platform=web&features=itemOpusStyle&timezone_offset=-480", encode(offset)))
 }
 
 fn valid_mid(mid: u64) -> Result<()> {

@@ -77,6 +77,30 @@ fn images(params: &Value) -> Result<Vec<String>> {
 }
 
 impl Runtime {
+    pub(super) fn tieba_forum_read_matches(&self, method: &str, params: &Value) -> bool {
+        (method == "social.open" && params["reference"].as_str().is_some_and(|r| self.locators.scope_for(FORUM, r).is_ok()))
+            || (method == "social.discover" && params["continuation"].as_str().is_some_and(|r| self.locators.scope_for(CONTINUATION, r).is_ok()))
+    }
+    pub(super) fn open_tieba_forum_read(&mut self, params: &Value) -> Result<Value> {
+        if params.get("platform").is_some_and(|v| v != "tieba") {
+            return Err("platform differs from the selected Tieba forum".into());
+        }
+        if params.get("source").is_some() || params.get("feed_ref").is_some() {
+            return Err("selected forum continuation is separate from home or following feeds".into());
+        }
+        let mut request = params.clone();
+        request["action"] = json!("forum");
+        if let Some(reference) = params.get("reference") {
+            request["forum_ref"] = reference.clone();
+            request.as_object_mut().unwrap().remove("reference");
+        }
+        let mut result = self.task_tieba_features(&request)?;
+        result["source"] = json!("tieba_selected_forum");
+        if let Some(cursor) = result["continuation"].as_str() {
+            result["next"] = json!({"tool":"social_discover","arguments":{"continuation":cursor}});
+        }
+        Ok(result)
+    }
     pub(super) fn task_tieba_features(&mut self, params: &Value) -> Result<Value> {
         let action = required_str(params, "action")?;
         if write_action(action) {

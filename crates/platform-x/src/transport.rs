@@ -96,7 +96,8 @@ fn api_stage(path: &str) -> RequestStage {
     match path.rsplit('/').next().unwrap_or("") {
         "settings.json" => RequestStage::AccountSettings,
         "UserByScreenName" | "UserByRestId" | "userIdRedirectQuery" => RequestStage::UserLookup,
-        "UserTweets" | "UserOriginalsTimeline" => RequestStage::Timeline,
+        "UserTweets" | "UserOriginalsTimeline" | "HomeTimeline" | "HomeLatestTimeline"
+        | "HomeTimelineQuery" | "HomeLatestTimelineQuery" => RequestStage::Timeline,
         "TweetDetail" | "TweetResultByRestId" => RequestStage::Post,
         _ => RequestStage::OtherApi,
     }

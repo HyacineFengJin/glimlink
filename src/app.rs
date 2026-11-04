@@ -20,6 +20,7 @@ mod auth;
 mod bili_features;
 mod browsing;
 mod discussion;
+mod discovery;
 mod emotes;
 mod engagement;
 mod github;
@@ -593,6 +594,7 @@ impl Runtime {
                 | "bilibili.uploader_content"
                 | "bilibili.uploader_videos"
                 | "bilibili.dynamics"
+                | "bilibili.following"
                 | "bilibili.dynamic_media"
                 | "bilibili.context"
                 | "bilibili.popular"

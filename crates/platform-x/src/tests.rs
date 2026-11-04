@@ -82,6 +82,48 @@ fn modern_timeline_pin_module_cursor_and_reused_cursor_remain_explicit() {
     assert_eq!(p.has_more, Some(true));
 }
 #[test]
+fn account_home_queries_have_distinct_shapes_and_do_not_accept_profile_or_wrong_feed() {
+    let instructions = json!([{"__typename":"TimelineAddEntries","entries":[entry(tweet("111")),{"content":{"cursor_type":"Bottom","value":"next-home"}}]}]);
+    let recommended =
+        json!({"data":{"home_timeline":{"home_timeline_urt":{"instructions":instructions}}}});
+    let parsed = model::home_response(&recommended, true, None, 100).unwrap();
+    assert_eq!(parsed.timeline_kind, "for_you");
+    assert_eq!(parsed.items.len(), 1);
+    assert_eq!(parsed.next_cursor.as_deref(), Some("next-home"));
+    assert!(model::home_response(&recommended, false, None, 100).is_err());
+    let following = json!({"data":{"home_latest_timeline":{"home_timeline_urt":{"instructions":instructions}}}});
+    assert_eq!(
+        model::home_response(&following, false, None, 100)
+            .unwrap()
+            .timeline_kind,
+        "following"
+    );
+    assert!(model::home_response(&following, true, None, 100).is_err());
+    assert!(model::home_response(&timeline(instructions.clone()), true, None, 100).is_err());
+    assert!(model::home_response(&json!({"data":{}}), true, None, 100).is_err());
+    let legacy = json!({"data":{"home":{"home_timeline_urt":{"instructions":instructions}}}});
+    assert_eq!(
+        model::home_response(&legacy, true, None, 100)
+            .unwrap()
+            .items
+            .len(),
+        1
+    );
+}
+#[test]
+fn home_variables_follow_the_published_relay_contract_and_cursor_stays_explicit() {
+    let first = super::home_variables(true, true, None, 20);
+    assert_eq!(first["requestContext"], "launch");
+    assert!(first.get("cursor").is_none());
+    assert!(first.get("enableRanking").is_none());
+    let next = super::home_variables(true, false, Some("provider-cursor"), 10);
+    assert_eq!(next["requestContext"], "scroll");
+    assert_eq!(next["cursor"], "provider-cursor");
+    assert_eq!(next["enableRanking"], false);
+    assert!(next.get("userId").is_none());
+    assert!(next.get("screenName").is_none());
+}
+#[test]
 fn modern_author_results_and_wrapper_without_outer_id_are_not_lost() {
     let mut post = tweet("111");
     let author = post["core"]["user_results"]["result"].take();

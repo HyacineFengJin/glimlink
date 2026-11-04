@@ -11,13 +11,13 @@ fn capability(name: &str, state: S, detail: &str) -> Capability {
 
 pub fn modules() -> Vec<ModuleInfo> {
     vec![
-        ModuleInfo {id:"platform-reddit".into(),kind:"platform".into(),capabilities:vec![capability("web_login",S::Implemented,"Operator browser session with positive authenticated-page readiness and independent Runtime identity verification. Real-account acceptance pending."),capability("read",S::Implemented,"Signed-in homepage, exact post and bounded comment context through common social tools; lazy image references. No writes.")]},
-        ModuleInfo {id:"platform-discord".into(),kind:"platform".into(),capabilities:vec![capability("web_login",S::Implemented,"Explicit personal website session; credentials stay in Rust/private control pipes. Independent Runtime actor verification. This is not bot/OAuth equivalence; real acceptance pending."),capability("read",S::Implemented,"DM/guild/channel selection and bounded message history with lazy attachments, account-bound references and continuations. No Gateway, sends or guild joins.")]},
+        ModuleInfo {id:"platform-reddit".into(),kind:"platform".into(),capabilities:vec![capability("web_login",S::Implemented,"Operator browser session with positive authenticated-page readiness and independent Runtime identity verification. Real-account acceptance pending."),capability("read",S::Implemented,"Verified-viewer Reddit Best personalized home and separate subscription Hot feed, source-bound deduplicated pagination, exact posts/comments and lazy images. No writes; live account acceptance pending.")]},
+        ModuleInfo {id:"platform-discord".into(),kind:"platform".into(),capabilities:vec![capability("web_login",S::Implemented,"Explicit personal website session; credentials stay in Rust/private control pipes. Independent Runtime actor verification. This is not bot/OAuth equivalence; real acceptance pending."),capability("read",S::Implemented,"DM/guild/channel selection and bounded messages, plus separately labeled personalized Highlights notifications; exact selected-message opens and lazy attachments. Viewer/source/account-bound continuations. No Gateway, sends, ACKs or guild joins. Highlights protocol-tested; live acceptance pending.")]},
         ModuleInfo {
             id: "platform-pixiv".into(), kind: "platform".into(),
             capabilities: vec![
-                capability("web_login", S::Implemented, "Operator-installed browser hands off only the Pixiv web session; independent authenticated HTML identity verification and alias binding before persistence. Live account acceptance pending."),
-                capability("read", S::Implemented, "Read-only safe-mode recommendations and artwork metadata; opaque targets and lazy regular/original image references use shared media reading. Homepage continuation and ugoira decoding are unavailable."),
+                capability("web_login", S::Implemented, "Ordinary browser session bridge; authenticated SSR viewer verification and alias binding. Saved-session verification and real artwork/home reads passed; source-specific feed acceptance is recorded separately."),
+                capability("read", S::Implemented, "Read account home recommendation IDs and personalized tag topics, separate followed-author updates, and artwork metadata. Viewer/source/topic-bound cached paging; shared lazy image reading. Ranking/editorial material is not substituted for personalized sections; ugoira decoding unavailable."),
             ],
         },
         ModuleInfo {
@@ -58,7 +58,7 @@ pub fn modules() -> Vec<ModuleInfo> {
                 capability(
                     "ai_client_tasks",
                     S::Implemented,
-                    "Default model tools open content, discuss, read creator feeds, notifications and publications, send to exact supported targets, and read/watch media. Runtime restores account-bound references, tracks pagination and fits real image attachments; legacy routes remain host-side.",
+                    "Default model tools discover saved-account personalized feeds and separate following sources, open content, discuss, read notifications/publications, and read/watch media. feed_ref restores provider/source/account; continuations retain source and paging. Legacy routes remain host-side.",
                 ),
                 capability(
                     "mcp_transport",
@@ -111,7 +111,7 @@ pub fn modules() -> Vec<ModuleInfo> {
                 capability(
                     "discovery_and_discussion",
                     S::Implemented,
-                    "Separate signed-in homepage recommendations, public popular list and search; refresh-batch provenance/deduplication, snapshot statistics, cursor comments and paged replies. Media stays lazy and account-scoped.",
+                    "Separate signed-in homepage recommendations, followed-author dynamics, public popular list and search; refresh-batch provenance/deduplication, snapshot statistics, cursor comments and paged replies. Media stays lazy and account-scoped.",
                 ),
                 capability(
                     "creator_content",
@@ -163,7 +163,7 @@ pub fn modules() -> Vec<ModuleInfo> {
                 capability(
                     "repository_and_collaboration",
                     S::Implemented,
-                    "Dedicated GitHub task tools for repositories, issues/pull requests, comments, notifications, and bounded lazy files/changes. Fixed REST transport; public reads need no login.",
+                    "Dedicated GitHub task tools for repositories, issues/PRs, notifications and lazy files/changes, plus a separately labeled authenticated following/watched activity stream. Received activity is not algorithmic homepage recommendation. Fixed REST transport.",
                 ),
                 capability(
                     "account_and_comment",
@@ -176,7 +176,7 @@ pub fn modules() -> Vec<ModuleInfo> {
             id:"platform-x".into(), kind:"platform".into(),
             capabilities:vec![
                 capability("web_session",S::Implemented,"Private import and identity-bound reuse of the user's own X browser session; no developer API key or automatic fresh login."),
-                capability("read",S::Implemented,"Shared social task tools for profile/post opening, author posts and own publications, with opaque account-bound targets, bounded cursors and on-demand media. Real-account acceptance is recorded separately."),
+                capability("read",S::Implemented,"For You and separate Following timelines from current website queries, profile/post opening, author posts and own publications. Account/source-bound cached pagination and lazy media; new home feeds protocol-tested, real-account acceptance pending."),
                 capability("write",S::Unavailable,"This adapter currently implements reads only; posting, replies, likes, follows and direct messages have not been enabled."),
             ],
         },
@@ -211,7 +211,7 @@ pub fn modules() -> Vec<ModuleInfo> {
                 capability(
                     "threads",
                     S::Implemented,
-                    "Read-only protobuf thread pages, replies and opaque media assets; public data verified",
+                    "Native personalized homepage recommendations, separate real followed-forum traversal, thread/reply pages and lazy media. Source/account-bound continuations and direct read-only forum entry points; per-source live acceptance recorded separately.",
                 ),
                 capability(
                     "login",

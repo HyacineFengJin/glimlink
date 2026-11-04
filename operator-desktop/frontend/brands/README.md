@@ -24,6 +24,9 @@ There are no remote icon requests at application startup.
 | GitHub | Official logo archive, black Invertocat with clear space | GitHub permits integration identification under its brand rules |
 | Antigravity | Official press SVG, full color | Official brand asset; Google brand conditions apply |
 | Codex | OpenAI-published Codex extension icon | OpenAI copyright/trademark usage terms apply |
+| pixiv | Official website touch icon | pixiv copyright/trademark terms apply |
+| Reddit | Official brand-page logo | Reddit brand terms apply |
+| Discord | Official brand-page symbol | Discord brand terms apply; unchanged white symbol on Blurple |
 
 GitHub provides its [logo files and integration usage guidance](https://brand.github.com/foundations/logo).
 Antigravity provides [press assets](https://antigravity.google/press).

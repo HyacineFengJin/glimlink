@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 //! GitHub task surface: opaque account-bound targets, lazy file reads and durable
 //! single-attempt comments. No host gh credentials or browser state are consulted.
+mod following;
 use super::*;
 use crate::{
     outbox::{Operation, Outbox, Status},

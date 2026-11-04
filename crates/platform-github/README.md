@@ -60,3 +60,18 @@ Official protocol references:
 `CollaborationAction` uses fixed endpoints from GitHub's official REST documentation: [issues](https://docs.github.com/en/rest/issues/issues?apiVersion=2026-03-10), [reviews](https://docs.github.com/en/rest/pulls/reviews?apiVersion=2026-03-10), and [review comments](https://docs.github.com/en/rest/pulls/comments?apiVersion=2026-03-10). Inline reviews use actual file paths and a frozen PR head commit, not diff positions guessed by the model. The host accepts returned `file_ref` values, checks account/repository/revision, and verifies acknowledged inline comments against the exact review-scoped listing including author, review, commit and line coordinates. `reviews` provides a paged review summary listing.
 
 The Runtime `github_action` tool owns exact target references and durable operations. Lost/malformed success responses remain unknown and are never resubmitted automatically. Close/reopen affects state only; there is no merge, push or delete action. All new collaboration tests are synthetic Docker tests; no live issue/review/state mutation was performed in this development pass.
+
+## Following activity
+
+`Client::received_events(login, page)` reads the authenticated account’s received
+activity in fixed 20-item pages, with the existing typed pagination and rate-limit
+handling. Runtime verifies the current viewer before every provider page and
+binds cached tails and continuations to that viewer and account. The activity
+includes followed-user and repository events; it is separate from algorithmic
+homepage recommendations. Raw payloads, comment bodies, emails and URLs are not
+passed through. Supported repository, issue, pull request and comment subjects
+receive existing account-bound `github_open` targets; files remain lazy.
+
+GitHub documents a window of at most 300 events from the past 30 days and exposes
+an `X-Poll-Interval` hint. This feed is not real time. Protocol source:
+[received events](https://docs.github.com/en/rest/activity/events#list-events-received-by-the-authenticated-user).

@@ -155,7 +155,7 @@
     "approved_binary_assets": [
       {
         "path": "operator-desktop/icons/icon.png",
-        "sha256": "6e520543e7f3a2d56ca78ec38d99b4dff0fc96cb291e28f814cb589b8aaf38c6",
+        "sha256": "46b981d442fae3a0c04b59c063281fab891cdd91fa352bbe2773009fbc95558a",
         "origin": "Project-authored 512x512 RGBA firefly application icon, exported from the original SVG; provenance in operator-desktop/icons/README.md",
         "license": "MIT"
       },
@@ -211,17 +211,41 @@
       {
         "path": "crates/runtime-operator/src/browser_login/extension/icon-16.png",
         "license": "MIT",
-        "origin": "Project-authored Glimlink firefly icon, exported by scripts/generate-brand.py"
+        "origin": "Project-authored Glimlink firefly icon, exported by scripts/generate-brand.py",
+        "sha256": "4721ed2f1014fe9232da3029532ce0cd844c66ee7e6609cd1350987072123ffd"
       },
       {
         "path": "crates/runtime-operator/src/browser_login/extension/icon-32.png",
         "license": "MIT",
-        "origin": "Project-authored Glimlink firefly icon, exported by scripts/generate-brand.py"
+        "origin": "Project-authored Glimlink firefly icon, exported by scripts/generate-brand.py",
+        "sha256": "306fbb0582c532afe2eaaca8510113f40514375d4d7dea9f8abf08d5c3e08c77"
       },
       {
         "path": "crates/runtime-operator/src/browser_login/extension/icon-128.png",
         "license": "MIT",
-        "origin": "Project-authored Glimlink firefly icon, exported by scripts/generate-brand.py"
+        "origin": "Project-authored Glimlink firefly icon, exported by scripts/generate-brand.py",
+        "sha256": "6fddd5602c7ebc508ebf6260c4cd0a91ba5ea677f4eda1f2c3a0fc9e8b05527f"
+      },
+      {
+        "path": "operator-desktop/frontend/brands/pixiv.png",
+        "sha256": "5e95246385b5bbaac754c23d11abfd1c52798f93d24decb59496f1afde5716c7",
+        "origin": "pixiv; exact official source in frontend/brands/sources.json",
+        "license": "Third-party trademark/copyright asset, not MIT",
+        "approval_scope": "Reviewed source asset path only, not a public redistribution clearance"
+      },
+      {
+        "path": "operator-desktop/frontend/brands/reddit.png",
+        "sha256": "2245d08bef7b95a7b40d24fe83c65d0be87458ada7add648a1e355e94ecaf609",
+        "origin": "Reddit; exact official source in frontend/brands/sources.json",
+        "license": "Third-party trademark/copyright asset, not MIT",
+        "approval_scope": "Reviewed source asset path only, not a public redistribution clearance"
+      },
+      {
+        "path": "operator-desktop/frontend/brands/discord.svg",
+        "sha256": "5ba72d750bae7120e9b4d5dc0ec13b227e496a20df38944a607c1408c57d2891",
+        "origin": "Discord; exact official source in frontend/brands/sources.json",
+        "license": "Third-party trademark/copyright asset, not MIT",
+        "approval_scope": "Reviewed source asset path only, not a public redistribution clearance"
       }
     ],
     "excluded_source_paths": [
@@ -234,7 +258,10 @@
       "operator-desktop/frontend/brands/weixin.png",
       "operator-desktop/frontend/brands/antigravity.svg",
       "operator-desktop/frontend/brands/github.svg",
-      "operator-desktop/frontend/brands/codex.png"
+      "operator-desktop/frontend/brands/codex.png",
+      "operator-desktop/frontend/brands/pixiv.png",
+      "operator-desktop/frontend/brands/reddit.png",
+      "operator-desktop/frontend/brands/discord.svg"
     ]
   },
   "rules": [

@@ -276,6 +276,32 @@ impl Client {
     ) -> Result<DownloadInfo> {
         self.transport.download_media(url, destination, max_bytes)
     }
+    /// The authenticated account's real home query. No public/Following
+    /// substitute is attempted when the requested For You query is unavailable.
+    /// Query IDs and Relay providers come from the published website bundles.
+    pub fn home_timeline(
+        &mut self,
+        recommended: bool,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<TimelinePage> {
+        if !(1..=20).contains(&limit)
+            || cursor.is_some_and(|v| {
+                v.is_empty() || v.len() > 4096 || v.bytes().any(|b| b.is_ascii_control())
+            })
+        {
+            return Err(Error::InvalidInput);
+        }
+        let op = self.operation(if recommended {
+            bootstrap::OperationKind::HomeRecommended
+        } else {
+            bootstrap::OperationKind::HomeFollowing
+        })?;
+        let mut vars = home_variables(op.modern, recommended, cursor, limit);
+        op.provided_variables(&mut vars);
+        // The Runtime retains a bounded server-page tail before continuing.
+        model::home_response(&self.graphql(&op, vars)?, recommended, cursor, 100)
+    }
     fn ensure_web(&mut self) -> Result<()> {
         if self.web.is_none() {
             self.web = Some(bootstrap::WebState::load(&self.transport)?);
@@ -320,4 +346,26 @@ pub(crate) fn user_name_variables(modern: bool, name: &str) -> Value {
     } else {
         json!({"screen_name":name,"withSafetyModeUserFields":false})
     }
+}
+pub(crate) fn home_variables(
+    modern: bool,
+    recommended: bool,
+    cursor: Option<&str>,
+    count: u32,
+) -> Value {
+    let mut value = if modern {
+        json!({"count":count,"seenTweetIds":[],"requestContext":if cursor.is_some(){"scroll"}else{"launch"}})
+    } else {
+        json!({"count":count,"includePromotedContent":false,"latestControlAvailable":true,"withCommunity":true,"seenTweetIds":[]})
+    };
+    if !recommended && modern {
+        value["enableRanking"] = json!(false);
+    }
+    if recommended && !modern {
+        value["requestContext"] = json!(if cursor.is_some() { "scroll" } else { "launch" });
+    }
+    if let Some(cursor) = cursor {
+        value["cursor"] = json!(cursor);
+    }
+    value
 }

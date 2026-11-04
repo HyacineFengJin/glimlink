@@ -85,6 +85,42 @@
       "modifications": "None; exact original bytes",
       "license": "Third-party trademark/copyright asset, not MIT",
       "usage": "Unchanged icon from the OpenAI-published Codex extension listing; OpenAI brand terms apply"
+    },
+    {
+      "file": "pixiv.png",
+      "owner": "pixiv",
+      "source_url": "https://s.pximg.net/common/images/apple-touch-icon.png?20250206",
+      "source_page": "https://www.pixiv.net/",
+      "usage_terms": "https://policies.pixiv.net/",
+      "sha256": "5e95246385b5bbaac754c23d11abfd1c52798f93d24decb59496f1afde5716c7",
+      "downloaded_on": "2026-11-04",
+      "modifications": "None; exact original bytes",
+      "license": "Third-party trademark/copyright asset, not MIT",
+      "usage": "Official site/brand identification; packaged only in local provider-artwork builds under provider terms"
+    },
+    {
+      "file": "reddit.png",
+      "owner": "Reddit",
+      "source_url": "https://redditinc.com/hubfs/Reddit%20Inc/Content/Brand%20Page/Reddit_Logo.png",
+      "source_page": "https://redditinc.com/brand",
+      "usage_terms": "https://redditinc.com/policies/trademark-use-policy",
+      "sha256": "2245d08bef7b95a7b40d24fe83c65d0be87458ada7add648a1e355e94ecaf609",
+      "downloaded_on": "2026-11-04",
+      "modifications": "None; exact original bytes",
+      "license": "Third-party trademark/copyright asset, not MIT",
+      "usage": "Official site/brand identification; packaged only in local provider-artwork builds under provider terms"
+    },
+    {
+      "file": "discord.svg",
+      "owner": "Discord",
+      "source_url": "https://cdn.prod.website-files.com/6257adef93867e50d84d30e2/66e278299a53f5bf88615e90_Symbol.svg",
+      "source_page": "https://discord.com/branding",
+      "usage_terms": "https://discord.com/branding",
+      "sha256": "5ba72d750bae7120e9b4d5dc0ec13b227e496a20df38944a607c1408c57d2891",
+      "downloaded_on": "2026-11-04",
+      "modifications": "None; exact original bytes",
+      "license": "Third-party trademark/copyright asset, not MIT",
+      "usage": "Official site/brand identification; packaged only in local provider-artwork builds under provider terms"
     }
   ]
 }

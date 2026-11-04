@@ -3,6 +3,7 @@
 //! session, not a password. No browser, scripts, OAuth-app impersonation, joins,
 //! acknowledgements, messages, votes or other write requests exist here.
 use serde::{Deserialize, Serialize};
+pub mod discord_discovery;
 use serde_json::{Value, json};
 use std::{
     fmt,
@@ -238,9 +239,17 @@ impl Client {
         identity(self.session.site, &raw)
     }
     pub fn reddit_home(&self, after: Option<&str>, count: u64) -> Result<Value> {
+        self.reddit_home_feed("recommended", after, count)
+    }
+    pub fn reddit_home_feed(&self, source: &str, after: Option<&str>, count: u64) -> Result<Value> {
         if self.session.site != Site::Reddit {
             return Err(Error::InvalidInput);
         }
+        let sort = match source {
+            "recommended" => "best",
+            "following" => "hot",
+            _ => return Err(Error::InvalidInput),
+        };
         let after = match after {
             Some(v) => {
                 fullname(v)?;
@@ -249,7 +258,7 @@ impl Client {
             None => String::new(),
         };
         self.get(&format!(
-            "/best.json?raw_json=1&limit={}{}",
+            "/{sort}.json?raw_json=1&limit={}{}",
             limit(count)?,
             after
         ))

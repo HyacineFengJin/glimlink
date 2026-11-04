@@ -133,6 +133,7 @@ impl Transport {
                 | "/c/f/frs/page?cmd=301001"
                 | "/c/f/pb/floor?cmd=302002"
                 | "/c/u/feed/userpost?cmd=303002"
+                | "/c/f/excellent/personalized?cmd=309264"
         ) {
             return Err(Error::UrlPolicy);
         }
@@ -206,6 +207,23 @@ impl Transport {
             .header("Content-Type", "application/x-www-form-urlencoded")
             .header("Cookie", &format!("BDUSS={bduss}"))
             .send(body.as_slice())
+            .map_err(|_| Error::Network)?;
+        status(response.status().as_u16())?;
+        limited(
+            response.body_mut().as_reader(),
+            self.config.max_response_bytes.min(1024 * 1024),
+        )
+    }
+    pub(crate) fn followed_forums(&self) -> Result<Vec<u8>> {
+        let bduss = self.config.bduss.as_deref().ok_or(Error::LoginRequired)?;
+        let url = "https://tieba.baidu.com/c/f/forum/forumGuide";
+        let mut response = self
+            .agent
+            .post(url)
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .header("Subapp-Type", "hybrid")
+            .header("Cookie", &format!("BDUSS={bduss}"))
+            .send(b"sort_type=3&call_from=3".as_slice())
             .map_err(|_| Error::Network)?;
         status(response.status().as_u16())?;
         limited(

@@ -8,6 +8,7 @@ use std::collections::BTreeSet;
 
 const TARGET: &str = "task-x-target";
 const CURSOR: &str = "task-x-continuation";
+const HOME_CURSOR: &str = "task-x-home-continuation";
 const MEDIA: &str = "task-x-media";
 const FAILURE: &str = "x-request:";
 
@@ -64,6 +65,33 @@ struct Cursor {
     screen_name: String,
     cursor: String,
     seen: BTreeSet<String>,
+}
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HomeCursor {
+    source: String,
+    started: bool,
+    provider_cursor: Option<String>,
+    provider_has_more: Option<bool>,
+    pending: Vec<Value>,
+    seen: BTreeSet<String>,
+    warnings: Vec<String>,
+}
+impl HomeCursor {
+    fn validate(&self) -> Result<()> {
+        if !matches!(self.source.as_str(), "recommended" | "following")
+            || self.provider_cursor.as_ref().is_some_and(|v| {
+                v.is_empty() || v.len() > 4096 || v.bytes().any(|b| b.is_ascii_control())
+            })
+            || self.pending.len() > 100
+            || self.seen.len() > 512
+            || self.warnings.len() > 16
+            || self.seen.iter().any(|v| id(v).is_err())
+        {
+            return Err("invalid X home continuation".into());
+        }
+        Ok(())
+    }
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -403,7 +431,10 @@ impl Runtime {
         }
         params["continuation"]
             .as_str()
-            .is_some_and(|v| self.locators.scope_for(CURSOR, v).is_ok())
+            .is_some_and(|v| self.locators.scope_for(CURSOR, v).is_ok() || self.locators.scope_for(HOME_CURSOR, v).is_ok())
+    }
+    pub(super) fn call_x_discover(&mut self, params: &Value) -> Result<Value> {
+        self.call_x_social("social.discover", params)
     }
     pub(super) fn call_x_social(&mut self, method: &str, params: &Value) -> Result<Value> {
         if let Some(state) = self.x.as_ref() {
@@ -421,6 +452,7 @@ impl Runtime {
         if params.get("platform").is_some_and(|value| value != "x") {
             return Err("X reference belongs to a different platform than requested".into());
         }
+        if method == "social.discover" {return self.x_discover_inner(params)}
         if !matches!(
             method,
             "social.open" | "social.profile" | "social.creator_content" | "social.publications"
@@ -671,6 +703,122 @@ impl Runtime {
         }
         Ok(post)
     }
+    fn x_discover_inner(&mut self, params: &Value) -> Result<Value> {
+        fields(
+            params,
+            &["platform", "account", "source", "continuation", "limit"],
+        )?;
+        let count =
+            u32::try_from(number(params, "limit", 10)?).map_err(|_| "invalid X page limit")?;
+        if !(1..=20).contains(&count) {
+            return Err("X page limit must be 1..20".into());
+        }
+        if params
+            .get("source")
+            .is_some_and(|value| !matches!(value.as_str(), Some("recommended" | "following")))
+        {
+            return Ok(
+                json!({"status":"unsupported","platform":"x","available_sources":["recommended","following"],"detail":"Select the authenticated For You or Following feed; no public substitute was requested."}),
+            );
+        }
+        if let Some(reference) = params.get("continuation") {
+            let reference = reference
+                .as_str()
+                .ok_or("X continuation must be a string")?;
+            let scope = self.locators.scope_for(HOME_CURSOR, reference)?;
+            super::tasks::check_account(params, &scope)?;
+            if scope.platform != Platform::X {
+                return Err("X continuation platform mismatch".into());
+            }
+            let cursor: HomeCursor = self.locators.get(&scope, HOME_CURSOR, reference)?;
+            cursor.validate()?;
+            if params
+                .get("source")
+                .is_some_and(|source| source.as_str() != Some(cursor.source.as_str()))
+            {
+                return Err("X continuation source differs from requested source".into());
+            }
+            return self.with_task_scope(&scope, |rt| rt.x_home_page(cursor, count as usize));
+        }
+        super::tasks::check_account(params, &self.scope(Platform::X))?;
+        self.x_home_page(
+            HomeCursor {
+                source: params["source"].as_str().unwrap_or("recommended").into(),
+                started: false,
+                provider_cursor: None,
+                provider_has_more: None,
+                pending: Vec::new(),
+                seen: BTreeSet::new(),
+                warnings: Vec::new(),
+            },
+            count as usize,
+        )
+    }
+    fn x_home_page(&mut self, mut saved: HomeCursor, limit: usize) -> Result<Value> {
+        saved.validate()?;
+        if saved.pending.is_empty() && (!saved.started || saved.provider_cursor.is_some()) {
+            let previous = saved.provider_cursor.take();
+            let page = self
+                .x_client()?
+                .client
+                .home_timeline(saved.source == "recommended", previous.as_deref(), 20)
+                .map_err(error)?;
+            saved.started = true;
+            saved.provider_has_more = page.has_more;
+            saved.provider_cursor = page
+                .next_cursor
+                .filter(|v| Some(v.as_str()) != previous.as_deref());
+            saved.warnings = page.warnings.into_iter().take(16).collect();
+            if let Some(note) = page.pagination_note {
+                saved.warnings.push(note);
+                saved.warnings.truncate(16)
+            }
+            for post in page.pinned.into_iter().chain(page.items) {
+                if saved.pending.len() >= 100 {
+                    return Err("X home page exceeds bound".into());
+                }
+                saved
+                    .pending
+                    .push(serde_json::to_value(post).map_err(|_| "cannot encode X post")?);
+            }
+        }
+        let mut items = Vec::new();
+        let mut consumed = 0;
+        for post in &saved.pending {
+            if items.len() >= limit || saved.seen.len() >= 512 {
+                break;
+            }
+            consumed += 1;
+            let post_id = required_str(post, "id")?;
+            id(post_id)?;
+            if saved.seen.insert(post_id.to_owned()) {
+                items.push(self.x_post_value(post.clone())?)
+            }
+        }
+        saved.pending.drain(..consumed);
+        // A stale provider cursor or a repeated/empty page must not create an
+        // infinite autonomous polling loop. A fresh discovery is always explicit.
+        if items.is_empty() {
+            saved.provider_cursor = None;
+            saved.pending.clear()
+        }
+        let source = saved.source.clone();
+        let provider_has_more = saved.provider_has_more;
+        let warnings = saved.warnings.clone();
+        let more = (!saved.pending.is_empty() || saved.provider_cursor.is_some())
+            && saved.seen.len() < 512;
+        let continuation = if more {
+            Some(
+                self.locators
+                    .put(&self.scope(Platform::X), HOME_CURSOR, &saved)?,
+            )
+        } else {
+            None
+        };
+        Ok(
+            json!({"status":"ok","scope":self.scope(Platform::X),"source":source,"context":{"source":if source=="recommended"{"x_for_you"}else{"x_following"},"signed_in_request":true,"personalization_verified":false},"items":items,"continuation":continuation,"has_more":more,"provider_has_more":provider_has_more,"warnings":warnings,"content_observed":true,"media_downloaded":false,"stop_reason":if more{"page_complete"}else if saved.seen.len()>=512{"session_item_budget"}else if items.is_empty(){"no_new_items"}else{"provider_end_or_no_cursor"}}),
+        )
+    }
     fn x_posts(
         &mut self,
         user_id: String,
@@ -834,6 +982,62 @@ mod tests {
         ));
         private_dir(&path).unwrap();
         path
+    }
+    #[test]
+    fn home_continuation_preserves_cached_tail_source_account_and_lazy_media_without_network() {
+        let path = lab();
+        let mut rt = Runtime::open(&path.join("state"), "owner", None).unwrap();
+        let post = |id: &str| json!({"id":id,"author":{"id":"42","screen_name":"fixture","name":"Fixture"},"text":"Synthetic home post","counts":{"like":3},"media":[{"kind":"photo","url":"https://pbs.twimg.com/media/fixture.jpg","variants":[]}]});
+        let cursor = HomeCursor {
+            source: "recommended".into(),
+            started: true,
+            provider_cursor: None,
+            provider_has_more: Some(false),
+            pending: vec![post("111"), post("112"), post("113")],
+            seen: BTreeSet::new(),
+            warnings: Vec::new(),
+        };
+        let first = rt.x_home_page(cursor, 1).unwrap();
+        assert_eq!(first["context"]["source"], "x_for_you");
+        assert_eq!(first["context"]["personalization_verified"], false);
+        assert_eq!(first["items"].as_array().unwrap().len(), 1);
+        let item = &first["items"][0];
+        assert!(item["target_ref"].is_string());
+        assert!(item["creator_ref"].is_string());
+        assert_eq!(item["media"][0]["fetched"], false);
+        assert!(item["media"][0].get("url").is_none());
+        assert!(item["media"][0]["media_ref"].is_string());
+        let reference = first["continuation"].as_str().unwrap();
+        assert!(
+            rt.call_x_discover(&json!({"continuation":reference,"source":"following"}))
+                .unwrap_err()
+                .contains("source differs")
+        );
+        assert!(
+            rt.call_x_discover(&json!({"continuation":reference,"account":"someone-else"}))
+                .unwrap_err()
+                .contains("account differs")
+        );
+        let rest = rt
+            .call_x_discover(&json!({"continuation":reference,"limit":2}))
+            .unwrap();
+        assert_eq!(rest["items"][0]["id"], "112");
+        assert_eq!(rest["items"][1]["id"], "113");
+        assert_eq!(rest["has_more"], false);
+        assert_eq!(rest["scope"]["account"], "owner");
+        assert_eq!(rest["source"], "recommended");
+        assert!(rest["continuation"].is_null());
+        assert_eq!(
+            rt.call_x_discover(&json!({"source":"popular"})).unwrap()["status"],
+            "unsupported"
+        );
+        assert_eq!(
+            rt.call_x_discover(&json!({})).unwrap()["status"],
+            "needs_auth"
+        );
+        assert!(!rt.state.join("outbox").exists());
+        drop(rt);
+        fs::remove_dir_all(path).unwrap();
     }
     #[test]
     fn local_status_and_invalid_private_import_do_not_start_a_network_login() {

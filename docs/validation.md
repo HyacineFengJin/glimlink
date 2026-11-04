@@ -439,3 +439,30 @@ baselines, not an additive budget, controlled attribution of the earlier peak,
 or a new worst-case bound. The earlier 512 MiB pressure finding remains valid.
 All private social account copies were removed after evidence review; native
 subscription homes and original accounts remain intact.
+
+
+## Account recommendation and following feeds (2026-11-04)
+
+The discovery tool now lists account feed references with `action=sources` and
+opens them with the same tool. Recommended and following sources have distinct
+references/cursors; omitted source selects account recommendations, not a
+public popular feed. Pixiv selects ordered recommendation IDs from the real
+homepage section and offers only its personalized tag topics. Tieba following
+reads the account's actual followed-forum list and traverses those forums; it
+does not use followed authors or guessed native tab types. Discord Highlights
+are explicitly personalized notifications, not a homepage timeline. GitHub
+received activity is explicitly a following/watched source, not an algorithmic
+recommendation feed.
+
+Network-disabled Docker checks passed: 207 Runtime unit tests, 6 execution-profile
+routing tests, 6 MCP stdio tests, 170 platform SDK tests (2 separate tests remain
+explicitly ignored), and 26 frontend checks. Additional targeted checks cover
+real catalog-mode routing, followed-forum identity verification and current X
+public-query extraction without executing JavaScript. The model tool catalog
+still fits the 32-definition native limit; paused Weixin status compatibility
+is retained. Source-path review reported no release blockers.
+
+Real-account feed acceptance is recorded separately from these protocol tests.
+No new X/Reddit/Discord session was requested for this change, and no live
+platform writes were performed. On-demand media and the runtime/operator
+separation are preserved.
