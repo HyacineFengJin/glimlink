@@ -466,3 +466,40 @@ Real-account feed acceptance is recorded separately from these protocol tests.
 No new X/Reddit/Discord session was requested for this change, and no live
 platform writes were performed. On-demand media and the runtime/operator
 separation are preserved.
+
+Real-account reads on the VPS verified Bilibili, Tieba and Pixiv recommendation
+and following feeds, cached tails, Bilibili/Pixiv content targets, and opening a
+followed Tieba forum with its own pagination. GitHub verified the saved viewer
+and returned a valid empty received-activity page. X, Reddit and Discord remain
+pending real-account acceptance because no sessions were configured there.
+
+Live responses exposed additional cases: Bilibili forwarded originals can have
+an empty optional comment target, and Tieba forum pages can exceed the requested
+20 posts. The adapters now preserve the full bounded provider page, and Tieba
+creates target/media references only for delivered posts. Pixiv tag sections
+can change on each homepage refresh; returned topic steps now read the exact
+verified snapshot rather than fetching a different homepage. A network-disabled
+regression exercises topic selection and pagination with an unusable synthetic
+session, including source/account/viewer ownership checks. The follow-up suite
+passed 210 Runtime unit tests, 6 MCP stdio tests and 10 targeted Bilibili dynamics
+tests; the separate Bilibili feature integration suite passed 3 tests.
+
+The final Pixiv topic read completed from cache in 0.30 seconds. A later Tieba
+following request was rejected with `UrlPolicy`; a fixed self-identity endpoint
+diagnostic returned HTTP 200 with first-party cookie domains, and retrying the
+unchanged feed and cached continuation succeeded. The original rejection is
+retained in private evidence; its exact cause was not established, and URL or
+identity checks were not relaxed. These trials establish working reads, not a
+request-success-rate guarantee.
+
+The final read-only multi-platform trial observed one Runtime control container
+at 18.52 MiB cgroup `memory.peak`, with 39 external samples and no sampling race;
+sampling continued until the container exited. No model engine or media download
+ran in that measurement. This is a feed-reader workload, not the memory budget
+for Codex, Antigravity or concurrent agents. The VPS image retains its 512 MiB
+container limit and the previously stopped worker remains stopped.
+
+The local operator was updated and its Pixiv, Reddit and Discord provider icons
+were visually checked in the installed native app. Provider artwork keeps its
+owner's terms. Runtime updates were built locally in isolated Docker, delivered
+over SSH and checked with an offline image doctor; no release or tag was made.
